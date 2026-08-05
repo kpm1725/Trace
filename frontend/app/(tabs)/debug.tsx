@@ -1,19 +1,24 @@
 import { useState } from "react";
-import { View, Text, StyleSheet, Pressable, TextInput, ScrollView, Alert } from "react-native";
+import { View, Text, StyleSheet, Pressable, TextInput, ScrollView, Alert, ActivityIndicator } from "react-native";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { apiFetchForm, ApiError } from "@/src/api/client";
+import { useBilling } from "@/src/context/BillingContext";
+import Paywall from "@/src/components/Paywall";
+import DebugResult, { DebugResultData } from "@/src/components/DebugResult";
 import { colors, fonts, radius, spacing, type } from "@/src/theme";
 
-// Stub screen for "Debug from photo". Image picking works end to end; the
-// Claude vision call, ranked-cause response, and session persistence are
-// full feature logic to be built after the scaffold is confirmed.
 export default function Debug() {
   const insets = useSafeAreaInsets();
+  const { entitlement, refresh } = useBilling();
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [symptom, setSymptom] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<DebugResultData | null>(null);
+  const [showPaywall, setShowPaywall] = useState(false);
 
   const pickImage = async (fromCamera: boolean) => {
     const perm = fromCamera
@@ -28,18 +33,48 @@ export default function Debug() {
       : await ImagePicker.launchImageLibraryAsync({ quality: 0.8 });
     if (!result.canceled && result.assets?.[0]) {
       setImageUri(result.assets[0].uri);
+      setResult(null);
     }
   };
 
-  const analyze = () => {
-    Alert.alert("Coming soon", "Sending this to Claude for diagnosis is the next build step.");
+  const analyze = async () => {
+    if (!imageUri) {
+      Alert.alert("Add a photo", "Take or upload a photo of the circuit first.");
+      return;
+    }
+    if (!symptom.trim()) {
+      Alert.alert("Describe the symptom", "A short description helps Trace narrow down the cause.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const form = new FormData();
+      form.append("symptom", symptom.trim());
+      form.append("file", { uri: imageUri, name: "circuit.jpg", type: "image/jpeg" } as any);
+      const data = await apiFetchForm<{ session: { result: DebugResultData } }>("/debug/photo", form);
+      setResult(data.session.result);
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 402) {
+        setShowPaywall(true);
+      } else {
+        Alert.alert("Analysis failed", e instanceof Error ? e.message : "Something went wrong.");
+      }
+    } finally {
+      setBusy(false);
+      refresh();
+    }
   };
 
   return (
     <ScrollView style={[styles.root, { paddingTop: insets.top }]} testID="debug-screen">
       <View style={styles.header}>
-        <Text style={styles.eyebrow}>DEBUG FROM PHOTO</Text>
-        <Text style={styles.title}>What's wrong with this circuit?</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.eyebrow}>DEBUG FROM PHOTO</Text>
+          <Text style={styles.title}>What's wrong with this circuit?</Text>
+        </View>
+        {entitlement && (
+          <Text style={styles.credits}>{entitlement.is_unlimited ? "∞" : entitlement.total_available} credits</Text>
+        )}
       </View>
 
       <View style={styles.imageBox}>
@@ -72,18 +107,27 @@ export default function Debug() {
         multiline
       />
 
-      <Pressable testID="debug-analyze-button" style={styles.cta} onPress={analyze}>
-        <Text style={styles.ctaText}>Analyze</Text>
+      <Pressable testID="debug-analyze-button" style={styles.cta} onPress={analyze} disabled={busy}>
+        {busy ? <ActivityIndicator color={colors.onBrandPrimary} /> : <Text style={styles.ctaText}>Analyze</Text>}
       </Pressable>
+
+      {result && (
+        <View style={styles.resultsBox}>
+          <DebugResult result={result} />
+        </View>
+      )}
+
+      <Paywall visible={showPaywall} onClose={() => setShowPaywall(false)} />
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background, padding: spacing.lg },
-  header: { marginBottom: spacing.lg },
+  header: { flexDirection: "row", alignItems: "flex-start", marginBottom: spacing.lg },
   eyebrow: { fontFamily: fonts.sansBold, fontWeight: "700", color: colors.brandAccent, letterSpacing: 3, fontSize: type.sm },
   title: { fontFamily: fonts.sansBold, fontWeight: "700", color: colors.onBackground, fontSize: type["2xl"], marginTop: spacing.xs },
+  credits: { fontFamily: fonts.sansMedium, fontWeight: "600", color: colors.brandAccent, fontSize: type.sm, marginTop: spacing.xs },
   imageBox: {
     height: 200,
     borderRadius: radius.lg,
@@ -114,6 +158,7 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: colors.border, color: colors.onSurface,
     padding: spacing.md, textAlignVertical: "top", marginBottom: spacing.lg,
   },
-  cta: { backgroundColor: colors.brandPrimary, paddingVertical: 16, borderRadius: radius.pill, alignItems: "center", marginBottom: spacing.xl },
+  cta: { backgroundColor: colors.brandPrimary, paddingVertical: 16, borderRadius: radius.pill, alignItems: "center", marginBottom: spacing.lg },
   ctaText: { fontFamily: fonts.sansBold, fontWeight: "700", color: colors.onBrandPrimary, fontSize: type.lg },
+  resultsBox: { marginBottom: spacing.xl },
 });

@@ -17,29 +17,53 @@ export async function clearToken() {
   await storage.secureRemove(TOKEN_KEY);
 }
 
+export class ApiError extends Error {
+  status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+  }
+}
+
 type Opts = {
   method?: "GET" | "POST" | "PATCH" | "DELETE" | "PUT";
   body?: any;
   auth?: boolean;
 };
 
-export async function apiFetch<T = any>(path: string, opts: Opts = {}): Promise<T> {
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
-  if (opts.auth !== false) {
+async function authHeaders(auth: boolean): Promise<Record<string, string>> {
+  const headers: Record<string, string> = {};
+  if (auth) {
     const t = await getToken();
     if (t) headers["Authorization"] = `Bearer ${t}`;
   }
+  return headers;
+}
+
+async function throwIfNotOk(res: Response): Promise<void> {
+  if (res.ok) return;
+  const text = await res.text().catch(() => "");
+  throw new ApiError(res.status, text || res.statusText);
+}
+
+export async function apiFetch<T = any>(path: string, opts: Opts = {}): Promise<T> {
+  const headers = await authHeaders(opts.auth !== false);
+  headers["Content-Type"] = "application/json";
   const res = await fetch(`${API_BASE}${path}`, {
     method: opts.method || "GET",
     headers,
     body: opts.body ? JSON.stringify(opts.body) : undefined,
   });
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`API ${res.status}: ${text || res.statusText}`);
-  }
+  await throwIfNotOk(res);
   if (res.status === 204) return undefined as any;
+  return (await res.json()) as T;
+}
+
+// Multipart upload — used for the debug-photo endpoint. Content-Type is left
+// unset so fetch sets the multipart boundary itself.
+export async function apiFetchForm<T = any>(path: string, form: FormData): Promise<T> {
+  const headers = await authHeaders(true);
+  const res = await fetch(`${API_BASE}${path}`, { method: "POST", headers, body: form as any });
+  await throwIfNotOk(res);
   return (await res.json()) as T;
 }
