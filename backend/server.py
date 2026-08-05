@@ -21,6 +21,7 @@ from pydantic import BaseModel
 
 from billing import (
     get_entitlement, consume_credit, handle_revenuecat_event,
+    reconcile_pending_events,
     CREDIT_PRODUCTS, UNLIMITED_PRODUCT_ID, set_unlimited_until,
 )
 
@@ -214,6 +215,13 @@ async def billing_sync(authorization: Optional[str] = Header(None)):
     for those — see billing.py docstring on why summing purchase history here
     would risk double-crediting)."""
     user = await require_user(authorization)
+
+    # Apply any purchases whose webhook landed before this account existed.
+    try:
+        await reconcile_pending_events(db, user["user_id"])
+    except Exception:
+        log.exception("billing_sync: reconciling parked events failed")
+
     if REVENUECAT_SECRET_API_KEY:
         try:
             async with httpx.AsyncClient(timeout=10.0) as hc:
@@ -381,7 +389,11 @@ async def startup():
     await db.user_sessions.create_index("session_token", unique=True)
     await db.user_sessions.create_index("expires_at", expireAfterSeconds=0)
     await db.sessions.create_index([("user_id", 1), ("created_at", -1)])
+    # Unique index is load-bearing: it's what makes webhook handling atomic
+    # against concurrent duplicate deliveries (see billing.py).
     await db.billing_events.create_index("event_id", unique=True)
+    await db.pending_billing_events.create_index("app_user_id")
+    await db.pending_billing_events.create_index("event_id", unique=True)
     log.info("Trace API ready")
 
 @app.on_event("shutdown")

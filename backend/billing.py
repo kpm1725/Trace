@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import HTTPException
+from pymongo.errors import DuplicateKeyError
 
 log = logging.getLogger("trace.billing")
 
@@ -89,32 +90,74 @@ async def consume_credit(db, user_id: str) -> dict:
     return {"free_consumed": 0, "paid_consumed": 1, "unlimited": False}
 
 
-async def grant_credits(db, user_id: str, credits: int):
-    await db.users.update_one({"user_id": user_id}, {"$inc": {"paid_credits": credits}}, upsert=False)
+async def grant_credits(db, user_id: str, credits: int) -> bool:
+    """Returns False if no such user — caller must not treat that as success."""
+    res = await db.users.update_one({"user_id": user_id}, {"$inc": {"paid_credits": credits}})
+    if res.matched_count == 0:
+        return False
     log.info("Granted %d credits to user %s", credits, user_id)
+    return True
 
 
-async def set_unlimited_until(db, user_id: str, until: datetime):
-    await db.users.update_one({"user_id": user_id}, {"$set": {"unlimited_until": until}}, upsert=False)
+async def set_unlimited_until(db, user_id: str, until: datetime) -> bool:
+    """Returns False if no such user — caller must not treat that as success."""
+    res = await db.users.update_one({"user_id": user_id}, {"$set": {"unlimited_until": until}})
+    if res.matched_count == 0:
+        return False
     log.info("Set unlimited access for user %s until %s", user_id, until)
+    return True
 
 
-async def event_already_processed(db, event_id: str) -> bool:
-    existing = await db.billing_events.find_one({"event_id": event_id})
-    return existing is not None
+def _expiry_from(event: dict) -> Optional[datetime]:
+    exp_ms = event.get("expiration_at_ms")
+    return datetime.fromtimestamp(exp_ms / 1000, tz=timezone.utc) if exp_ms else None
 
 
-async def mark_event_processed(db, event_id: str, event_type: str, app_user_id: str):
-    await db.billing_events.update_one(
-        {"event_id": event_id},
-        {"$set": {"event_id": event_id, "type": event_type, "app_user_id": app_user_id, "received_at": now_utc()}},
-        upsert=True,
-    )
+async def _apply_event(db, event: dict) -> str:
+    """Apply one event's effect. Returns a status string; "unknown_user" means
+    the purchase is real but we have no such user yet, so it must be parked
+    rather than dropped."""
+    event_type = event.get("type")
+    app_user_id = event.get("app_user_id")
+    product_id = event.get("product_id")
+
+    if event_type in ("INITIAL_PURCHASE", "NON_RENEWING_PURCHASE", "RENEWAL", "UNCANCELLATION"):
+        if product_id in CREDIT_PRODUCTS:
+            # Renewals/uncancellations of a consumable shouldn't happen, but if
+            # they do, granting again is the safe direction (user paid again).
+            ok = await grant_credits(db, app_user_id, CREDIT_PRODUCTS[product_id])
+            return "credits_granted" if ok else "unknown_user"
+        if product_id == UNLIMITED_PRODUCT_ID:
+            until = _expiry_from(event)
+            if not until:
+                log.warning("Unlimited purchase %s had no expiration_at_ms", event.get("id"))
+                return "missing_expiry"
+            ok = await set_unlimited_until(db, app_user_id, until)
+            return "unlimited_set" if ok else "unknown_user"
+        log.info("Purchase of unrecognized product_id %r — no entitlement mapped", product_id)
+        return "unmapped_product"
+
+    if event_type in ("CANCELLATION", "EXPIRATION", "BILLING_ISSUE"):
+        # Cancellation just means "won't renew" — access stays valid until the
+        # already-recorded unlimited_until timestamp naturally lapses. Log only.
+        log.info("Subscription %s for user %s (product %s)", event_type, app_user_id, product_id)
+        return "noted"
+
+    log.info("Unhandled RevenueCat event type: %s", event_type)
+    return "ignored"
 
 
-async def handle_revenuecat_event(db, event: dict) -> Optional[str]:
+async def handle_revenuecat_event(db, event: dict) -> str:
     """Apply a RevenueCat webhook event. Idempotent on event['id'].
-    Returns a short status string for logging, or None if ignored.
+
+    Concurrency: the claim below is an atomic insert against a unique index on
+    event_id, not a read-then-write, so two simultaneous deliveries of the same
+    event can't both pass the duplicate check and double-credit.
+
+    Durability: an event for a user_id we don't have is parked in
+    pending_billing_events rather than silently dropped — otherwise a real
+    purchase evaporates and the idempotency marker stops it ever being retried.
+    reconcile_pending_events() replays those once the user exists.
 
     NOTE: exact field names (app_user_id, product_id, expiration_at_ms, type
     values) follow RevenueCat's documented webhook schema as of integration
@@ -122,35 +165,60 @@ async def handle_revenuecat_event(db, event: dict) -> Optional[str]:
     events aren't landing as expected, since webhook schemas do evolve.
     """
     event_id = event.get("id")
-    event_type = event.get("type")
     app_user_id = event.get("app_user_id")
-    product_id = event.get("product_id")
 
     if not event_id or not app_user_id:
         log.warning("Ignoring malformed RevenueCat event: %s", event)
-        return None
+        return "malformed"
 
-    if await event_already_processed(db, event_id):
+    # Atomically claim the event. Unique index on event_id is what makes this safe.
+    try:
+        await db.billing_events.insert_one({
+            "event_id": event_id, "type": event.get("type"),
+            "app_user_id": app_user_id, "product_id": event.get("product_id"),
+            "status": "processing", "received_at": now_utc(),
+        })
+    except DuplicateKeyError:
         return "duplicate"
 
-    if event_type in ("INITIAL_PURCHASE", "NON_RENEWING_PURCHASE"):
-        if product_id in CREDIT_PRODUCTS:
-            await grant_credits(db, app_user_id, CREDIT_PRODUCTS[product_id])
-        elif product_id == UNLIMITED_PRODUCT_ID:
-            exp_ms = event.get("expiration_at_ms")
-            if exp_ms:
-                await set_unlimited_until(db, app_user_id, datetime.fromtimestamp(exp_ms / 1000, tz=timezone.utc))
-    elif event_type == "RENEWAL":
-        if product_id == UNLIMITED_PRODUCT_ID:
-            exp_ms = event.get("expiration_at_ms")
-            if exp_ms:
-                await set_unlimited_until(db, app_user_id, datetime.fromtimestamp(exp_ms / 1000, tz=timezone.utc))
-    elif event_type in ("CANCELLATION", "EXPIRATION", "BILLING_ISSUE"):
-        # Cancellation just means "won't renew" — access stays valid until the
-        # already-recorded unlimited_until timestamp naturally lapses. Log only.
-        log.info("Subscription %s for user %s (product %s)", event_type, app_user_id, product_id)
-    else:
-        log.info("Unhandled RevenueCat event type: %s", event_type)
+    try:
+        status = await _apply_event(db, event)
+    except Exception:
+        # Release the claim so RevenueCat's retry can legitimately redo this.
+        await db.billing_events.delete_one({"event_id": event_id})
+        raise
 
-    await mark_event_processed(db, event_id, event_type, app_user_id)
-    return event_type
+    if status == "unknown_user":
+        log.error(
+            "RevenueCat event %s is for unknown user %s — parking for reconciliation",
+            event_id, app_user_id,
+        )
+        await db.pending_billing_events.insert_one({
+            "event_id": event_id, "app_user_id": app_user_id,
+            "event": event, "parked_at": now_utc(),
+        })
+
+    await db.billing_events.update_one(
+        {"event_id": event_id}, {"$set": {"status": status, "processed_at": now_utc()}}
+    )
+    return status
+
+
+async def reconcile_pending_events(db, user_id: str) -> int:
+    """Replay any events parked for this user (e.g. a purchase whose webhook
+    landed before the account existed). Returns how many were applied."""
+    applied = 0
+    cursor = db.pending_billing_events.find({"app_user_id": user_id})
+    for parked in await cursor.to_list(100):
+        status = await _apply_event(db, parked["event"])
+        if status == "unknown_user":
+            continue  # still not resolvable; leave parked
+        await db.pending_billing_events.delete_one({"event_id": parked["event_id"]})
+        await db.billing_events.update_one(
+            {"event_id": parked["event_id"]},
+            {"$set": {"status": f"reconciled:{status}", "processed_at": now_utc()}},
+        )
+        applied += 1
+    if applied:
+        log.info("Reconciled %d parked billing event(s) for user %s", applied, user_id)
+    return applied

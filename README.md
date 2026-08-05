@@ -106,13 +106,9 @@ The original plan (per the working spec) was `react-native-iap` or `expo-in-app-
    npm run start
    ```
    Real purchases require a **development build**, not Expo Go — `react-native-purchases` contains native code. Run `eas build --profile development --platform android` (or `ios`) once EAS is set up, or `npx expo run:android` locally.
-3. **RevenueCat setup**
-   - Create a RevenueCat project, link your App Store Connect and Google Play Console apps.
-   - Create products matching `backend/billing.py`'s IDs: `trace_credits_10`, `trace_credits_40` (consumable), `trace_unlimited_monthly` (subscription).
-   - Create an entitlement (default name `unlimited`, matches `REVENUECAT_UNLIMITED_ENTITLEMENT_ID`) attached to the subscription product, and an Offering with all three as packages.
-   - Copy the iOS and Android **public** SDK keys into `frontend/.env`.
-   - Under Project Settings → Integrations → Webhooks, point a webhook at `<your-backend>/api/billing/revenuecat-webhook` and set an Authorization header value — put the same value in `backend/.env` as `REVENUECAT_WEBHOOK_SECRET`.
-   - Copy the **secret** API key into `backend/.env` as `REVENUECAT_SECRET_API_KEY` (used only for the best-effort `/api/billing/sync` lookup — never ship this to the app).
+3. **RevenueCat setup** — see **[SETUP_REVENUECAT.md](SETUP_REVENUECAT.md)** for the full
+   step-by-step runbook (store products, entitlement, offering, API keys, webhook), plus
+   how to verify it with `backend/scripts/verify_webhook.py`.
 4. **Brand assets** — `app.json` references `assets/images/icon.png`, `adaptive-icon.png`, `splash-image.png`, `favicon.png`, none of which exist yet. Add these (violet gradient `#4C1D95` → `#8B5CF6` / lavender `#C4B5FD` on near-black `#1A1428`) before the first EAS build.
 5. **Railway** — point a new Railway service at `backend/`, it picks up `nixpacks.toml` automatically. Set the same env vars as `.env.example`.
 6. **EAS** — `cd frontend && eas init` to generate a real project ID, paste it into `app.json` → `extra.eas.projectId` (currently a placeholder).
@@ -122,4 +118,13 @@ The original plan (per the working spec) was `react-native-iap` or `expo-in-app-
 - **Circuit diagrams are rendered as structured lists** (components / connections / parts / wiring steps), not a positioned SVG schematic. Claude still outputs structured JSON as required — `CircuitResult.tsx` is the natural place to grow into a real wired-diagram layout later.
 - **No custom app fonts** — theme uses the system font. The icon-font CDN workaround (`use-icon-fonts.ts`) is still needed and is in place, since `@expo/vector-icons` is used throughout.
 - **Component reference screen** (pinouts/gotchas) — still deferred per the original MVP scope note.
-- **`/api/billing/sync` only reconciles the unlimited subscription**, not consumable credit packs (see `billing.py` docstring for why summing purchase history would risk double-crediting) — consumables rely on the webhook, which is idempotent per RevenueCat event id.
+- **`/api/billing/sync` only reconciles the unlimited subscription** against RevenueCat's REST API, not consumable credit packs (see `billing.py` docstring for why summing purchase history would risk double-crediting) — consumables rely on the webhook, which is idempotent per RevenueCat event id. It *does* also replay any parked events (below).
+
+## Billing correctness notes
+
+Two failure modes are handled explicitly, both covered by `backend/tests/test_billing.py` (19 tests, `cd backend && pytest`):
+
+- **Duplicate webhook delivery.** RevenueCat retries on non-2xx and can deliver the same event more than once. Each event is claimed with an atomic `insert_one` against a unique index on `event_id` rather than a read-then-write, so two concurrent deliveries can't both pass the duplicate check and double-credit. (The concurrent case is a real check-then-act race in production Mongo; note that the in-memory test double doesn't interleave coroutines, so the fix here rests on inspection, not on a reproduced failure.)
+- **Event for an unknown `app_user_id`.** Previously this silently no-opped *and* recorded the idempotency marker — so a purchase someone paid for evaporated with no way to replay it. Now such events are parked in `pending_billing_events` and applied by `/api/billing/sync` once that account exists.
+
+If a purchase ever appears to go missing, check `pending_billing_events` first: a row there means the money event arrived but couldn't be matched to an account.
