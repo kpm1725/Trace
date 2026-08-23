@@ -1,0 +1,5 @@
+﻿{
+  "env": {
+    "ANTHROPIC_BETAS": "advisor-tool-2026-03-01"
+  }
+}
