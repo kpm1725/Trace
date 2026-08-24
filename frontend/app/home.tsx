@@ -1,41 +1,28 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { apiFetch } from "@/src/api/client";
+import { Paywall } from "@/src/components/Paywall";
 import { VioletSeedLabs } from "@/src/components/VioletSeedLabs";
 import { useAuth } from "@/src/context/AuthContext";
+import { useEntitlement } from "@/src/hooks/use-entitlement";
 import { colors, fonts, gradient, radius, spacing, type } from "@/src/theme";
-import { Entitlement } from "@/src/types";
 
 export default function Home() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { user, signOut } = useAuth();
-  const [entitlement, setEntitlement] = useState<Entitlement | null>(null);
-
-  const loadEntitlement = useCallback(async () => {
-    try {
-      setEntitlement(await apiFetch<Entitlement>("/billing/entitlements"));
-    } catch {
-      // The balance is decoration on this screen; the gate is enforced
-      // server-side at the point of use. A failure here must not block entry
-      // to either tool.
-    }
-  }, []);
-
-  useEffect(() => {
-    loadEntitlement();
-  }, [loadEntitlement]);
+  const { entitlement, refresh } = useEntitlement();
+  const [paywallOpen, setPaywallOpen] = useState(false);
 
   // Coming back from a completed run, the balance has changed.
   useFocusEffect(
     useCallback(() => {
-      loadEntitlement();
-    }, [loadEntitlement]),
+      refresh();
+    }, [refresh]),
   );
 
   const credits = entitlement?.is_unlimited
@@ -46,6 +33,10 @@ export default function Home() {
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]} testID="home-screen">
+      {paywallOpen && (
+        <Paywall visible onClose={() => setPaywallOpen(false)} onCredited={refresh} />
+      )}
+
       <View style={styles.header}>
         <View>
           <Text style={styles.eyebrow}>
@@ -55,10 +46,15 @@ export default function Home() {
         </View>
         <View style={styles.headerRight}>
           {!!credits && (
-            <View style={styles.creditPill}>
+            <Pressable
+              testID="home-credit-pill"
+              onPress={() => setPaywallOpen(true)}
+              hitSlop={8}
+              style={({ pressed }) => [styles.creditPill, pressed && { opacity: 0.7 }]}
+            >
               <Ionicons name="flash-outline" size={13} color={colors.brandTertiary} />
               <Text style={styles.creditText}>{credits}</Text>
-            </View>
+            </Pressable>
           )}
           <Pressable testID="home-signout-button" onPress={signOut} hitSlop={10}>
             <Ionicons name="log-out-outline" size={22} color={colors.onSurfaceSecondary} />

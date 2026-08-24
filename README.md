@@ -7,9 +7,10 @@ Photograph a breadboard, say what it's doing wrong, and get ranked causes with
 the one measurement that settles them. Or describe a circuit in plain English
 and get a netlist, a parts list, and wiring steps.
 
-**Status: pre-alpha.** Backend routes, auth, the credit ledger, both Claude
-calls, both result views, and the circuit diagram are implemented; the backend
-and the diagram layout are tested. The purchase flow is not yet built — see
+**Status: pre-alpha.** Every MVP feature is implemented — auth, both Claude
+calls, both result views, the circuit diagram, the credit ledger, and the
+purchase flow — with 39 backend tests and the diagram layout under its own
+checks. What remains is store and account setup rather than code; see
 [What's not built yet](#whats-not-built-yet).
 
 ---
@@ -67,8 +68,12 @@ drives a renderer, where a missing key is a blank screen. See `backend/ai.py`.
     │   ├── context/AuthContext.tsx
     │   ├── billing/products.ts # RevenueCat ids, mirroring the backend grant tables
     │   ├── circuit/layout.ts   # netlist -> coordinates. Pure, no React.
+    │   ├── hooks/
+    │   │   ├── use-revenuecat.ts   # SDK config, identity binding, purchase, restore
+    │   │   └── use-entitlement.ts  # balance + post-purchase polling
     │   ├── components/
     │   │   ├── ui.tsx              # SectionHeading, Callout, Collapsible, Chip
+    │   │   ├── Paywall.tsx         # one sheet; prices read from the store
     │   │   ├── CircuitDiagram.tsx  # draws layout.ts's output as SVG
     │   │   ├── DiagnosisResult.tsx # shared by debug.tsx and session/[id].tsx
     │   │   ├── CircuitResult.tsx   # shared by generate.tsx and session/[id].tsx
@@ -192,6 +197,55 @@ and `refund_credits` reverses whatever it charged. The product ids in
 one contract and must stay in step: a product missing from either side can never
 be bought or never be credited.
 
+### The purchase flow
+
+1. `useRevenueCat` configures the SDK and **binds the RevenueCat customer to the
+   signed-in account** with `Purchases.logIn(user_id)`. This is the load-bearing
+   step: left anonymous, RevenueCat generates a `$RCAnonymousID:…` that matches
+   no user, the webhook's unknown-user branch fires, and the buyer is charged
+   and never credited.
+2. The buyer taps a pack; `Purchases.purchasePackage()` opens the native sheet.
+3. RevenueCat POSTs `/api/webhook/revenuecat`, which credits MongoDB.
+4. The app polls `/billing/entitlements` until the balance moves.
+
+Step 4 is why the sheet says "Confirming your purchase…" rather than closing
+immediately. Fulfilment is asynchronous, and by that point the money has already
+moved — so a slow webhook is reported as *"your credits are on the way"*, never
+as a failure. Timing out shows the same message with a nudge toward Restore.
+
+Prices come from the store, never from the app. The store is the only thing that
+knows what a pack costs in the buyer's currency after local tax; a hardcoded
+`$4.99` is wrong for most of the world and eventually wrong everywhere.
+
+### Setting up the products
+
+The product ids below must match **exactly** across three places: the store
+console, `CONSUMABLE_GRANTS`/`SUBSCRIPTION_GRANTS` in
+`backend/revenuecat_webhook.py`, and `frontend/src/billing/products.ts`.
+
+| Product id | Type | Grants |
+|---|---|---|
+| `credits_10` | Consumable | 10 credits |
+| `credits_25` | Consumable | 25 credits |
+| `credits_60` | Consumable | 60 credits |
+| `trace_unlimited_monthly` | Subscription | Unlimited, monthly |
+| `trace_unlimited_annual` | Subscription | Unlimited, annual |
+
+1. Create them in **Play Console** (Monetise → Products) and **App Store
+   Connect** (In-App Purchases), using these exact ids on both.
+2. Add them to a RevenueCat offering. The client reads packages from *every*
+   offering, not just the current one, so grouping is up to you.
+3. Set `EXPO_PUBLIC_REVENUECAT_GOOGLE_KEY` and `EXPO_PUBLIC_REVENUECAT_APPLE_KEY`
+   to the **public** SDK keys, and `REVENUECAT_API_KEY` on the backend to the
+   **secret** key. The secret key must never ship in the app.
+4. Point a RevenueCat webhook at `POST /api/webhook/revenuecat`. If you set
+   `REVENUECAT_WEBHOOK_AUTH`, send it as the `Authorization` header.
+
+Google Play reports a subscription as `productId:basePlanId`, so
+`trace_unlimited_monthly` arrives as `trace_unlimited_monthly:monthly`. Both
+sides strip the suffix — `base_product_id` on the server, `baseIdentifier` on the
+client. A product that ever needs renaming needs renaming in both.
+
 ---
 
 ## Native builds
@@ -260,19 +314,17 @@ unless noted.
 | `GET` | `/sessions` | Saved sessions, newest first, without `result` |
 | `GET / PATCH / DELETE` | `/sessions/{sid}` | One saved session |
 | `GET` | `/billing/entitlements` | Credit balance and unlimited state |
+| `POST` | `/billing/restore` | Reconcile entitlements against the store |
 | `POST` | `/webhook/revenuecat` | RevenueCat webhook — fulfils purchases (no auth header) |
 
 ---
 
 ## What's not built yet
 
-- **The paywall and the purchase flow.** `useRevenueCat` and the paywall sheet.
-  Products need creating in App Store Connect and Play Console first.
-- **Restore purchases.** `POST /api/billing/restore` — the client re-reads the
-  device receipt into RevenueCat, then the server reads the subscriber back
-  under the caller's own id and extends entitlements, never shortening one.
-  Subscriptions only: consumables are spent once granted, so re-granting them
-  from purchase history would hand out balance on every tap.
+- **Store products.** The code is done; the products themselves still need
+  creating in App Store Connect and Play Console — see
+  [Setting up the products](#setting-up-the-products). Until they exist the
+  paywall opens and says no purchase options are configured.
 - **Component reference** — deferred to v1.1, per the MVP scope. The screen
   exists so navigation is complete.
 - **Brand assets.** `frontend/assets/images/` holds generated placeholders.

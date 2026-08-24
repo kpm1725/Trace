@@ -34,6 +34,7 @@ import billing
 from revenuecat_webhook import (
     router as revenuecat_router,
     ensure_indexes as ensure_revenuecat_indexes,
+    restore_subscriptions,
 )
 
 ROOT_DIR = Path(__file__).parent
@@ -386,6 +387,21 @@ async def generate_from_prompt(body: GenerateRequest,
 async def entitlements(authorization: Optional[str] = Header(None)):
     user = await require_user(authorization)
     return await billing.get_entitlement(db, user["user_id"])
+
+
+@api.post("/billing/restore")
+async def restore(authorization: Optional[str] = Header(None)):
+    """Reconcile the caller's entitlements against the store.
+
+    The client half — re-reading the device receipt into RevenueCat — is
+    something only the SDK can do; this is the server half, and it reads the
+    subscriber under the caller's own id from their session. The request carries
+    no identifier, so there is nothing to tamper with: a user can only ever
+    restore onto themselves.
+    """
+    user = await require_user(authorization)
+    result = await restore_subscriptions(db, user["user_id"])
+    return {**result, "entitlement": await billing.get_entitlement(db, user["user_id"])}
 
 
 # ── Lifecycle ────────────────────────────────────────────────────────────────

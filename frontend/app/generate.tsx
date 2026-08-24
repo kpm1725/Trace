@@ -1,10 +1,9 @@
 /**
  * Generate from prompt.
  *
- * Owns the description form and the call. The result is rendered by
- * `<CircuitResult>`, shared with `session/[id].tsx`. The diagram itself is
- * still to come — see README, "Rendering the netlist" — but the connection
- * list in that component is enough to build from meanwhile.
+ * Owns the description form and the call. The result — diagram, parts list,
+ * wiring steps and netlist — is rendered by `<CircuitResult>`, shared with
+ * `session/[id].tsx`.
  */
 import { useState } from "react";
 import {
@@ -23,6 +22,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ApiError, apiFetch } from "@/src/api/client";
 import { CircuitResult } from "@/src/components/CircuitResult";
+import { Paywall } from "@/src/components/Paywall";
 import { colors, fonts, gradient, radius, spacing, type } from "@/src/theme";
 import { Circuit, TraceSession } from "@/src/types";
 
@@ -40,9 +40,11 @@ export default function GenerateFromPrompt() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<Circuit | null>(null);
+  const [paywall, setPaywall] = useState<string | null>(null);
 
   async function submit() {
     if (!description.trim()) return;
+    setPaywall(null);
     setBusy(true);
     setError(null);
     try {
@@ -53,8 +55,11 @@ export default function GenerateFromPrompt() {
       setResult(session.result as Circuit);
     } catch (e) {
       if (e instanceof ApiError && e.isPaywall) {
-        // TODO: open the credit paywall. Products are defined in src/billing/products.ts.
-        setError(`Out of credits — ${e.detail?.available ?? 0} left.`);
+        const needed = e.detail?.needed ?? 2;
+        const available = e.detail?.available ?? 0;
+        setPaywall(
+          `A generated circuit costs ${needed} credit${needed === 1 ? "" : "s"} and you have ${available}.`,
+        );
       } else {
         setError(e instanceof Error ? e.message : "Something went wrong.");
       }
@@ -67,6 +72,15 @@ export default function GenerateFromPrompt() {
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]} testID="generate-screen">
+      {paywall !== null && (
+        <Paywall
+          visible
+          reason={paywall}
+          onClose={() => setPaywall(null)}
+          onCredited={submit}
+        />
+      )}
+
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} hitSlop={10}>
           <Ionicons name="chevron-back" size={24} color={colors.onSurfaceSecondary} />

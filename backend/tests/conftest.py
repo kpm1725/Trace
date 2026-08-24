@@ -36,8 +36,31 @@ class FakeCollection:
                     d[field] = d.get(field, 0) + delta
                 for field, value in update.get("$set", {}).items():
                     d[field] = value
+                # `$max` is how restore extends an entitlement without ever
+                # shortening one, so the fake has to honour it or the test
+                # would pass on a mechanism that isn't being exercised.
+                for field, value in update.get("$max", {}).items():
+                    current = d.get(field)
+                    d[field] = value if current is None or value > current else current
+                for field in update.get("$unset", {}):
+                    d.pop(field, None)
                 return
         raise AssertionError(f"update_one matched nothing: {query}")
+
+    def find(self, query, projection=None):
+        matches = [dict(d) for d in self.docs if all(d.get(k) == v for k, v in query.items())]
+        for m in matches:
+            m.pop("_id", None)
+
+        class Cursor:
+            def __aiter__(self):
+                async def gen():
+                    for m in matches:
+                        yield m
+
+                return gen()
+
+        return Cursor()
 
     async def insert_one(self, doc):
         self.docs.append(dict(doc))

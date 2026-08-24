@@ -25,6 +25,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ApiError, apiFetch } from "@/src/api/client";
 import { DiagnosisResult } from "@/src/components/DiagnosisResult";
+import { Paywall } from "@/src/components/Paywall";
 import { colors, fonts, gradient, radius, spacing, type } from "@/src/theme";
 import { Diagnosis, TraceSession } from "@/src/types";
 
@@ -45,6 +46,7 @@ export default function DebugFromPhoto() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<Diagnosis | null>(null);
+  const [paywall, setPaywall] = useState<string | null>(null);
 
   async function prepare(uri: string) {
     // Resize on the longest edge and re-encode as JPEG. `base64: true` avoids a
@@ -80,6 +82,7 @@ export default function DebugFromPhoto() {
 
   async function submit() {
     if (!imageBase64 || !symptom.trim()) return;
+    setPaywall(null);
     setBusy(true);
     setError(null);
     try {
@@ -95,8 +98,11 @@ export default function DebugFromPhoto() {
       setResult(session.result as Diagnosis);
     } catch (e) {
       if (e instanceof ApiError && e.isPaywall) {
-        // TODO: open the credit paywall. Products are defined in src/billing/products.ts.
-        setError(`Out of credits — ${e.detail?.available ?? 0} left.`);
+        const needed = e.detail?.needed ?? 1;
+        const available = e.detail?.available ?? 0;
+        setPaywall(
+          `A diagnosis costs ${needed} credit${needed === 1 ? "" : "s"} and you have ${available}.`,
+        );
       } else {
         setError(e instanceof Error ? e.message : "Something went wrong.");
       }
@@ -109,6 +115,20 @@ export default function DebugFromPhoto() {
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]} testID="debug-screen">
+      {/* Mounted only once needed. The paywall configures the RevenueCat SDK
+          and fetches offerings on mount, and most people never see it — that
+          is store network work not worth doing on every visit to this screen. */}
+      {paywall !== null && (
+        <Paywall
+          visible
+          reason={paywall}
+          onClose={() => setPaywall(null)}
+          // Credited means the refused call can now succeed, so run it rather
+          // than making the user tap Diagnose again after paying.
+          onCredited={submit}
+        />
+      )}
+
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} hitSlop={10}>
           <Ionicons name="chevron-back" size={24} color={colors.onSurfaceSecondary} />

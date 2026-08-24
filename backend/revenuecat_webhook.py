@@ -33,8 +33,10 @@ import hashlib
 import logging
 import os
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
+from urllib.parse import quote
 
+import httpx
 from fastapi import APIRouter, Header, HTTPException, Request
 from pymongo.errors import DuplicateKeyError
 
@@ -218,3 +220,120 @@ async def revenuecat_webhook(request: Request, authorization: Optional[str] = He
     log.info("Credited user %s: %s", app_user_id, update_doc)
     await _mark_fulfilled(db, event_key)
     return {"ok": True, "fulfilled": True}
+
+
+# ── Restore ──────────────────────────────────────────────────────────────────
+#
+# The webhook is push-only. If a delivery is lost, rejected, or mapped to
+# nothing, the purchase never reaches the account and nothing retries. Restore
+# is the pull side, letting the app reconcile on demand — and it is also what
+# both stores require of any app selling a subscription, so a buyer switching
+# devices can get their entitlement back.
+#
+# Two paths, and the difference between them is the whole reason consumables
+# are handled the way they are:
+#
+#   Live lookup (REVENUECAT_API_KEY set) reads the subscriber's current state
+#   from RevenueCat. That state is a *purchase history*, so it must grant
+#   **subscriptions only** — re-granting a consumable from history would hand
+#   out balance on every tap of the restore button.
+#
+#   Replay (no key, or as a supplement) re-runs this server's own stored
+#   deliveries that were never fulfilled. Those are gated by the `fulfilled`
+#   flag, so each one grants at most once — which makes it safe for consumables
+#   too, and it is the only path that can recover a credit pack whose webhook
+#   never arrived.
+#
+# Neither path ever shortens an entitlement. `$max` on the expiry means a
+# restore can only ever move the date later, so restoring while a longer pass
+# is active cannot cost the user the time they already bought.
+
+REVENUECAT_API_KEY = os.environ.get("REVENUECAT_API_KEY", "")
+REVENUECAT_API_BASE = "https://api.revenuecat.com/v1"
+
+
+def parse_rc_datetime(value: Optional[str]) -> Optional[datetime]:
+    """RevenueCat timestamps look like `2026-09-20T04:55:33Z`."""
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        log.warning("Unparseable RevenueCat timestamp %r", value)
+        return None
+
+
+async def _fetch_subscriber(user_id: str) -> Optional[Dict[str, Any]]:
+    """The subscriber RevenueCat holds under this app_user_id.
+
+    Looked up by the caller's own id, taken from their session — the request
+    body carries no identifier, so nobody can restore onto someone else's
+    account.
+    """
+    if not REVENUECAT_API_KEY:
+        return None
+    url = f"{REVENUECAT_API_BASE}/subscribers/{quote(user_id, safe='')}"
+    headers = {"Authorization": f"Bearer {REVENUECAT_API_KEY}"}
+    async with httpx.AsyncClient(timeout=15.0) as hc:
+        r = await hc.get(url, headers=headers)
+    if r.status_code == 404:
+        return None  # never purchased anything; not an error
+    if r.status_code != 200:
+        log.error("RevenueCat subscriber lookup failed: %s %s", r.status_code, r.text[:300])
+        raise HTTPException(status_code=502, detail="Couldn't reach the store. Try again shortly.")
+    return r.json().get("subscriber") or {}
+
+
+async def restore_subscriptions(db, user_id: str, fetch_subscriber=None) -> Dict[str, Any]:
+    """Reconcile `user_id`'s entitlements against the store and stored deliveries.
+
+    `fetch_subscriber` is injectable so the behaviour can be tested without a
+    network stub.
+    """
+    fetch = fetch_subscriber or _fetch_subscriber
+    restored: List[str] = []
+
+    # ── Live subscriptions ────────────────────────────────────────────────
+    subscriber = await fetch(user_id)
+    if subscriber:
+        for product_id, sub in (subscriber.get("subscriptions") or {}).items():
+            field = SUBSCRIPTION_GRANTS.get(base_product_id(product_id))
+            if not field:
+                continue
+            expires = parse_rc_datetime(sub.get("expires_date"))
+            if not expires:
+                continue
+            # $max never moves an expiry backwards, so a restore run against a
+            # lapsed subscription cannot cut short a longer pass bought since.
+            await db.users.update_one({"user_id": user_id}, {"$max": {field: expires}})
+            restored.append(product_id)
+            log.info("Restored %s for %s until %s", product_id, user_id, expires.isoformat())
+
+    # ── Deliveries this server recorded but never credited ────────────────
+    replayed: List[str] = []
+    cursor = db.revenuecat_events.find(
+        {"app_user_id": user_id, "fulfilled": False}, {"_id": 0}
+    )
+    async for event_doc in cursor:
+        event = (event_doc.get("payload") or {}).get("event") or {}
+        product_id = event_doc.get("product_id") or event.get("product_id") or ""
+        if event_doc.get("type") not in FULFILLABLE_EVENTS:
+            continue
+        update_doc, reason = compute_grant(product_id, event)
+        if update_doc is None:
+            log.info("Replay skipped %s for %s: %s", product_id, user_id, reason)
+            continue
+        await db.users.update_one({"user_id": user_id}, update_doc)
+        await _mark_fulfilled(db, event_doc["event_id"])
+        replayed.append(product_id)
+        log.info("Replayed %s for %s", product_id, user_id)
+
+    return {
+        "ok": True,
+        "restored": restored,
+        "replayed": replayed,
+        # Tells the client whether an empty result means "nothing to restore" or
+        # "we couldn't actually check" — a real distinction to a buyer staring
+        # at a balance that hasn't moved.
+        "checked_store": subscriber is not None,
+    }
