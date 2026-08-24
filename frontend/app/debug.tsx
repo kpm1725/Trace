@@ -1,11 +1,9 @@
 /**
- * Debug from photo — SCAFFOLD.
+ * Debug from photo.
  *
- * Complete: image capture, resize/encode, the symptom form, and the API call.
- * Not built yet: the diagnosis result view. The ranked causes currently render
- * as a plain list so the round trip is testable end to end; the real view —
- * confidence badges, the "can't tell from photo" panel, per-cause fix steps —
- * is the next piece and is waiting on sign-off.
+ * Owns capture, resize/encode, the symptom form, and the call. The result is
+ * rendered by `<DiagnosisResult>`, shared with `session/[id].tsx` so a
+ * diagnosis looks the same whether it was just produced or reopened later.
  */
 import { useState } from "react";
 import {
@@ -26,7 +24,8 @@ import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ApiError, apiFetch } from "@/src/api/client";
-import { colors, confidenceColors, fonts, gradient, radius, spacing, type } from "@/src/theme";
+import { DiagnosisResult } from "@/src/components/DiagnosisResult";
+import { colors, fonts, gradient, radius, spacing, type } from "@/src/theme";
 import { Diagnosis, TraceSession } from "@/src/types";
 
 // The API accepts up to ~5MB of base64 per image, and a modern phone photo
@@ -186,34 +185,8 @@ export default function DebugFromPhoto() {
         )}
 
         {result && (
-          // SCAFFOLD RESULT VIEW — replace with the designed diagnosis screen.
           <View style={styles.result} testID="debug-result">
-            <Text style={styles.resultHeading}>What I can see</Text>
-            <Text style={styles.resultBody}>{result.observation}</Text>
-
-            <Text style={styles.resultHeading}>Likely causes</Text>
-            {result.likely_causes.map((c) => (
-              <View key={c.rank} style={styles.cause}>
-                <View style={styles.causeHead}>
-                  <Text style={styles.causeRank}>{c.rank}</Text>
-                  <Text style={[styles.badge, { color: confidenceColors[c.confidence] }]}>
-                    {c.confidence.toUpperCase()}
-                  </Text>
-                </View>
-                <Text style={styles.resultBody}>{c.cause}</Text>
-                <Text style={styles.checkLine}>Check: {c.how_to_check}</Text>
-              </View>
-            ))}
-
-            <Text style={styles.resultHeading}>What the photo can&apos;t tell me</Text>
-            {result.cannot_tell_from_photo.map((s, i) => (
-              <Text key={i} style={styles.resultBody}>
-                • {s}
-              </Text>
-            ))}
-
-            <Text style={styles.resultHeading}>Measure this first</Text>
-            <Text style={styles.resultBody}>{result.next_measurement}</Text>
+            <DiagnosisResult diagnosis={result} />
           </View>
         )}
       </ScrollView>
@@ -279,29 +252,5 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   error: { fontFamily: fonts.sans, fontSize: type.base, color: colors.error },
-  result: { marginTop: spacing.xl, gap: spacing.sm },
-  resultHeading: {
-    fontFamily: fonts.sansBold,
-    fontSize: type.base,
-    color: colors.brandTertiary,
-    letterSpacing: 0.5,
-    marginTop: spacing.lg,
-  },
-  resultBody: {
-    fontFamily: fonts.sans,
-    fontSize: type.base,
-    lineHeight: 21,
-    color: colors.onSurfaceSecondary,
-  },
-  cause: {
-    borderLeftWidth: 2,
-    borderLeftColor: colors.border,
-    paddingLeft: spacing.md,
-    gap: spacing.xs,
-    marginTop: spacing.sm,
-  },
-  causeHead: { flexDirection: "row", alignItems: "center", gap: spacing.md },
-  causeRank: { fontFamily: fonts.mono, fontSize: type.sm, color: colors.onSurfaceTertiary },
-  badge: { fontFamily: fonts.mono, fontSize: 10, letterSpacing: 1 },
-  checkLine: { fontFamily: fonts.mono, fontSize: type.sm, color: colors.onSurfaceTertiary },
+  result: { marginTop: spacing.lg },
 });

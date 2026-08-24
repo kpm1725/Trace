@@ -7,9 +7,10 @@ Photograph a breadboard, say what it's doing wrong, and get ranked causes with
 the one measurement that settles them. Or describe a circuit in plain English
 and get a netlist, a parts list, and wiring steps.
 
-**Status: scaffold.** Backend routes, auth, the credit ledger, and both Claude
-calls are implemented and tested. The two result views and the diagram renderer
-are not — see [What's not built yet](#whats-not-built-yet).
+**Status: pre-alpha.** Backend routes, auth, the credit ledger, both Claude
+calls, and both result views are implemented; the backend is tested. The diagram
+renderer and the purchase flow are not yet built — see
+[What's not built yet](#whats-not-built-yet).
 
 ---
 
@@ -65,7 +66,11 @@ drives a renderer, where a missing key is a blank screen. See `backend/ai.py`.
     │   ├── api/client.ts       # apiFetch + ApiError (402 carries paywall numbers)
     │   ├── context/AuthContext.tsx
     │   ├── billing/products.ts # RevenueCat ids, mirroring the backend grant tables
-    │   ├── components/VioletSeedLabs.tsx
+    │   ├── components/
+    │   │   ├── ui.tsx              # SectionHeading, Callout, Collapsible, Chip
+    │   │   ├── DiagnosisResult.tsx # shared by debug.tsx and session/[id].tsx
+    │   │   ├── CircuitResult.tsx   # shared by generate.tsx and session/[id].tsx
+    │   │   └── VioletSeedLabs.tsx
     │   ├── types.ts            # mirrors backend/schemas.py
     │   └── theme.ts
     ├── scripts/brand-assets.py # regenerates the placeholder icon and splash
@@ -224,10 +229,9 @@ unless noted.
 
 ## What's not built yet
 
-- **The diagnosis and circuit result views.** Both screens render their result
-  as plain text so the round trip is testable; the designed views, shared with
-  `session/[id].tsx`, are next.
-- **The diagram renderer.** See [above](#rendering-the-netlist).
+- **The diagram renderer.** See [above](#rendering-the-netlist). Everything
+  around it is in place: `<CircuitResult>` renders the netlist as a connection
+  list, which is buildable from today, and the drawing slots in above it.
 - **The paywall and the purchase flow.** `useRevenueCat` and the paywall sheet.
   Products need creating in App Store Connect and Play Console first.
 - **Restore purchases.** `POST /api/billing/restore` — the client re-reads the

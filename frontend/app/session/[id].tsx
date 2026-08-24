@@ -1,19 +1,34 @@
 /**
- * Saved session detail — SCAFFOLD.
+ * Saved session detail.
  *
- * Loads and shapes the record. The rendered views are the same two that
- * `debug.tsx` and `generate.tsx` show inline, so all three should share one
- * `<Diagnosis>` and one `<CircuitResult>` component once those are designed —
- * building them here first would mean writing them twice.
+ * Renders whichever result the record holds, using the same two components the
+ * live screens use. `kind` discriminates the union in `src/types.ts`, so
+ * TypeScript narrows `session.result` to `Diagnosis` or `Circuit` and neither
+ * branch needs a cast.
+ *
+ * The original prompt is shown above the result, which the live screens don't
+ * do — there the user just typed it. Reopening a session weeks later, "what did
+ * I actually ask?" is the first question.
  */
-import { useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useCallback, useEffect, useState } from "react";
+import {
+  ActivityIndicator,
+  Alert,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { apiFetch } from "@/src/api/client";
-import { colors, fonts, spacing, type } from "@/src/theme";
+import { CircuitResult } from "@/src/components/CircuitResult";
+import { DiagnosisResult } from "@/src/components/DiagnosisResult";
+import { Body, Callout } from "@/src/components/ui";
+import { colors, fonts, radius, spacing, type } from "@/src/theme";
 import { TraceSession } from "@/src/types";
 
 export default function SessionDetail() {
@@ -38,6 +53,24 @@ export default function SessionDetail() {
     })();
   }, [id]);
 
+  const confirmDelete = useCallback(() => {
+    Alert.alert("Delete this session?", "This can't be undone.", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await apiFetch(`/sessions/${id}`, { method: "DELETE" });
+            router.back();
+          } catch (e) {
+            setError(e instanceof Error ? e.message : "Couldn't delete that session.");
+          }
+        },
+      },
+    ]);
+  }, [id, router]);
+
   return (
     <View style={[styles.root, { paddingTop: insets.top }]} testID="session-screen">
       <View style={styles.header}>
@@ -47,28 +80,54 @@ export default function SessionDetail() {
         <Text style={styles.title} numberOfLines={1}>
           {session?.title ?? "Session"}
         </Text>
-        <View style={{ width: 24 }} />
+        {session ? (
+          <Pressable testID="session-delete-button" onPress={confirmDelete} hitSlop={10}>
+            <Ionicons name="trash-outline" size={20} color={colors.onSurfaceTertiary} />
+          </Pressable>
+        ) : (
+          <View style={{ width: 20 }} />
+        )}
       </View>
 
       <ScrollView contentContainerStyle={styles.body}>
         {loading ? (
           <ActivityIndicator color={colors.brand} style={{ marginTop: 60 }} />
         ) : error ? (
-          <Text style={styles.error}>{error}</Text>
+          <Callout tone="warning" title="Couldn't load" items={[error]} testID="session-error" />
         ) : session ? (
           <>
             <Text style={styles.kind}>
               {session.kind === "debug" ? "DIAGNOSIS" : "CIRCUIT"} ·{" "}
               {new Date(session.created_at).toLocaleString()}
             </Text>
+
+            <View style={styles.prompt}>
+              {session.kind === "debug" ? (
+                <>
+                  <Text style={styles.promptLabel}>Symptom</Text>
+                  <Body style={{ color: colors.onSurface }}>{session.prompt.symptom}</Body>
+                  {!!session.prompt.context && (
+                    <>
+                      <Text style={[styles.promptLabel, { marginTop: spacing.md }]}>
+                        Already tried
+                      </Text>
+                      <Body>{session.prompt.context}</Body>
+                    </>
+                  )}
+                </>
+              ) : (
+                <>
+                  <Text style={styles.promptLabel}>Asked for</Text>
+                  <Body style={{ color: colors.onSurface }}>{session.prompt.description}</Body>
+                </>
+              )}
+            </View>
+
             {session.kind === "debug" ? (
-              <Text style={styles.body_text}>{session.result.observation}</Text>
+              <DiagnosisResult diagnosis={session.result} />
             ) : (
-              <Text style={styles.body_text}>{session.result.summary}</Text>
+              <CircuitResult circuit={session.result} />
             )}
-            <Text style={styles.todo}>
-              Full result view lands with the shared diagnosis and circuit components.
-            </Text>
           </>
         ) : null}
       </ScrollView>
@@ -86,20 +145,31 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.lg,
     gap: spacing.md,
   },
-  title: { flex: 1, fontFamily: fonts.sansMedium, fontSize: type.lg, color: colors.onSurface, textAlign: "center" },
-  body: { paddingHorizontal: spacing.xl, paddingBottom: 80, gap: spacing.md },
-  kind: { fontFamily: fonts.mono, fontSize: type.sm, color: colors.onSurfaceTertiary, letterSpacing: 1 },
-  body_text: {
-    fontFamily: fonts.sans,
-    fontSize: type.base,
-    lineHeight: 21,
-    color: colors.onSurfaceSecondary,
+  title: {
+    flex: 1,
+    fontFamily: fonts.sansMedium,
+    fontSize: type.lg,
+    color: colors.onSurface,
+    textAlign: "center",
   },
-  todo: {
+  body: { paddingHorizontal: spacing.xl, paddingBottom: 80 },
+  kind: {
     fontFamily: fonts.mono,
     fontSize: type.sm,
     color: colors.onSurfaceTertiary,
-    marginTop: spacing.xl,
+    letterSpacing: 1,
   },
-  error: { fontFamily: fonts.sans, fontSize: type.base, color: colors.error },
+  prompt: {
+    backgroundColor: colors.surfaceSecondary,
+    borderRadius: radius.md,
+    padding: spacing.lg,
+    marginTop: spacing.md,
+    gap: spacing.xs,
+  },
+  promptLabel: {
+    fontFamily: fonts.sansMedium,
+    fontSize: type.sm,
+    color: colors.onSurfaceTertiary,
+    letterSpacing: 0.5,
+  },
 });

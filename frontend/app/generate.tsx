@@ -1,12 +1,10 @@
 /**
- * Generate from prompt — SCAFFOLD.
+ * Generate from prompt.
  *
- * Complete: the description form and the API call.
- * Not built yet: the circuit diagram. The response carries a full netlist
- * (`result.nets`), and turning that into a drawing is the largest single piece
- * of work in the MVP — see README, "Rendering the netlist". Until then the
- * parts list and wiring steps render as text, which is already the useful half
- * of the answer.
+ * Owns the description form and the call. The result is rendered by
+ * `<CircuitResult>`, shared with `session/[id].tsx`. The diagram itself is
+ * still to come — see README, "Rendering the netlist" — but the connection
+ * list in that component is enough to build from meanwhile.
  */
 import { useState } from "react";
 import {
@@ -24,6 +22,7 @@ import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ApiError, apiFetch } from "@/src/api/client";
+import { CircuitResult } from "@/src/components/CircuitResult";
 import { colors, fonts, gradient, radius, spacing, type } from "@/src/theme";
 import { Circuit, TraceSession } from "@/src/types";
 
@@ -127,44 +126,8 @@ export default function GenerateFromPrompt() {
         )}
 
         {result && (
-          // SCAFFOLD RESULT VIEW — the diagram goes above the parts list.
           <View style={styles.result} testID="generate-result">
-            <Text style={styles.circuitTitle}>{result.title}</Text>
-            <Text style={styles.resultBody}>{result.summary}</Text>
-
-            <View style={styles.diagramPlaceholder}>
-              <Ionicons name="git-network-outline" size={26} color={colors.onSurfaceTertiary} />
-              <Text style={styles.placeholderText}>
-                Diagram renderer not built yet — {result.components.length} components,{" "}
-                {result.nets.length} nets
-              </Text>
-            </View>
-
-            <Text style={styles.resultHeading}>Parts</Text>
-            {result.parts_list.map((p, i) => (
-              <Text key={i} style={styles.partLine}>
-                {p.quantity}× {p.part}
-                {p.designators.length ? `  (${p.designators.join(", ")})` : ""}
-              </Text>
-            ))}
-
-            <Text style={styles.resultHeading}>Wiring</Text>
-            {result.wiring_steps.map((s) => (
-              <Text key={s.step} style={styles.resultBody}>
-                {s.step}. {s.instruction}
-              </Text>
-            ))}
-
-            {result.cautions.length > 0 && (
-              <>
-                <Text style={[styles.resultHeading, { color: colors.warning }]}>Take care</Text>
-                {result.cautions.map((c, i) => (
-                  <Text key={i} style={[styles.resultBody, { color: colors.warning }]}>
-                    • {c}
-                  </Text>
-                ))}
-              </>
-            )}
+            <CircuitResult circuit={result} />
           </View>
         )}
       </ScrollView>
@@ -217,36 +180,5 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   error: { fontFamily: fonts.sans, fontSize: type.base, color: colors.error },
-  result: { marginTop: spacing.xl, gap: spacing.sm },
-  circuitTitle: { fontFamily: fonts.sansBold, fontSize: type.xl, color: colors.onSurface },
-  diagramPlaceholder: {
-    alignItems: "center",
-    gap: spacing.sm,
-    paddingVertical: spacing["2xl"],
-    borderWidth: 1,
-    borderStyle: "dashed",
-    borderColor: colors.border,
-    borderRadius: radius.lg,
-    marginTop: spacing.md,
-  },
-  placeholderText: {
-    fontFamily: fonts.mono,
-    fontSize: type.sm,
-    color: colors.onSurfaceTertiary,
-    textAlign: "center",
-  },
-  resultHeading: {
-    fontFamily: fonts.sansBold,
-    fontSize: type.base,
-    color: colors.brandTertiary,
-    letterSpacing: 0.5,
-    marginTop: spacing.lg,
-  },
-  resultBody: {
-    fontFamily: fonts.sans,
-    fontSize: type.base,
-    lineHeight: 21,
-    color: colors.onSurfaceSecondary,
-  },
-  partLine: { fontFamily: fonts.mono, fontSize: type.base, color: colors.onSurfaceSecondary },
+  result: { marginTop: spacing.lg },
 });
