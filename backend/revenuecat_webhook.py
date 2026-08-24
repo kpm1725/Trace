@@ -22,11 +22,12 @@ that exist because of specific incidents there:
   - An unknown user gets a 503, not a 2xx. A 2xx retires the event; RevenueCat
     would never retry, and the buyer would be charged and never credited.
 
-NOTE: the product ids below follow from the billing unit, which is not settled
-(see billing.py). If usage ends up metered separately per feature rather than
-from one shared balance, these tables and `frontend/src/billing/products.ts`
-change together — a product missing from either side can never be bought or
-never be credited.
+The grant tables below are one half of a two-sided contract; the other is
+`frontend/src/billing/products.ts`. A product missing from either side can never
+be bought or never be credited, so the two lists must stay in step.
+
+Credits are a single weighted pool (see billing.py), which is why one pack grant
+covers both features rather than there being a debug pack and a generate pack.
 """
 import hashlib
 import logging

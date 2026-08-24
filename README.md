@@ -113,21 +113,46 @@ its own. `react-native-svg` is installed and version-matched for this.
 
 ## Monetization
 
-Native in-app purchases through RevenueCat, which wraps Apple IAP and Google
+Native in-app purchases through **RevenueCat**, which wraps Apple IAP and Google
 Play Billing. The app never asserts its own entitlements — RevenueCat POSTs to
 `/api/webhook/revenuecat` and the server credits the account. Fulfilment is
 server-side because a client that can grant itself credits will.
+
+RevenueCat rather than `expo-in-app-purchases` (discontinued — last npm release
+about three years ago, and removed from Expo's own docs) or `react-native-iap`
+direct (which would mean writing receipt validation against both Apple and
+Google from scratch). Scribe already ships RevenueCat in production, so the
+webhook, the idempotency guard, and the `productId:basePlanId` normalisation
+here are a port of code that works rather than a first attempt.
 
 The ledger in `backend/billing.py` mirrors Scribe's chunk billing: a lifetime
 free allowance, a prepaid balance bought as consumables, and a time-boxed
 unlimited pass, checked in that order.
 
-> **The billing unit is not settled.** `CREDIT_COST` currently charges one
-> credit per AI call, which prices a photo diagnosis and a circuit generation
-> the same. Their token costs differ by roughly 2–3×, so that is a placeholder,
-> not a decision. Nothing else in the module changes whichever way it goes —
-> only that table and the product ids in `revenuecat_webhook.py` /
-> `frontend/src/billing/products.ts`, which must stay in step with each other.
+**The billing unit is a weighted single balance.** One pool of credits, priced
+by what the call costs to serve:
+
+| Call | Credits |
+|---|---|
+| Debug from photo | 1 |
+| Generate from prompt | 2 |
+
+A generation writes a full netlist, parts list and wiring steps and runs 2–3×
+the tokens of a diagnosis, so a flat rate would have priced them the same for
+materially different cost. Separate per-feature balances — Scribe's shape, where
+coverage credits and chunk credits never mix — were the other option, but they
+mean more SKUs and a user holding the wrong balance hitting a wall. One pool
+means a pack bought for one tool is spendable on the other.
+
+New accounts get 5 free credits for life: five diagnoses, or two generations and
+a diagnosis. A charge may straddle the free and paid balances, so the last free
+credit is never stranded.
+
+`CREDIT_COST` in `billing.py` is the whole pricing model — every gate reads it,
+and `refund_credits` reverses whatever it charged. The product ids in
+`revenuecat_webhook.py` and `frontend/src/billing/products.ts` are two halves of
+one contract and must stay in step: a product missing from either side can never
+be bought or never be credited.
 
 ---
 

@@ -8,16 +8,17 @@ client written against one reads the other.
 
     unlimited pass  ->  free allowance  ->  prepaid balance  ->  402
 
->>> THE BILLING UNIT IS NOT SETTLED. <<<
-`CREDIT_COST` below is the whole decision, and it is a placeholder pending
-confirmation. It currently charges 1 credit per AI call, which makes a photo
-diagnosis and a circuit generation cost the same. That is the simplest thing
-that could work and it is not obviously right — a diagnosis is one vision call
-on one image, a generation is a longer completion, and their token costs differ
-by roughly 2-3x in practice. The alternatives are separate balances per feature
-(Scribe's shape: coverage credits and chunk credits never mix) or a weighted
-single balance (a generation costs 2). Nothing else in this module changes
-whichever way that goes — only this table and the product grants below.
+The billing unit is a **weighted single balance**: one pool of credits, priced
+by what the call actually costs to serve. `CREDIT_COST` is that decision and the
+only place it lives.
+
+The alternative shapes were a flat rate per call (simpler to say on a paywall,
+but it prices a diagnosis and a generation the same when their token costs
+differ by roughly 2-3x) and separate balances per feature (Scribe's shape, where
+coverage credits and chunk credits never mix — more SKUs, and a user holding the
+wrong balance hits a wall). One pool means a pack bought for one tool is
+spendable on the other, which is the behaviour someone debugging a board they
+just generated will expect.
 """
 import logging
 from datetime import datetime, timezone
@@ -28,13 +29,23 @@ from fastapi import HTTPException
 log = logging.getLogger("trace")
 
 # Lifetime free credits per account, shared across every feature. Scribe grants
-# 5 conversion chunks on the same terms.
+# 5 conversion chunks on the same terms. At the weights below that is five
+# diagnoses, or two generations and a diagnosis — enough of either to see
+# whether the app is any good before being asked for money.
 FREE_CREDITS = 5
 
-# PLACEHOLDER — see the module docstring. One credit per AI call.
+# What each call costs, in credits.
+#
+# A diagnosis is one vision call over one image with a bounded response. A
+# generation writes a full netlist, parts list and wiring steps, and runs
+# 2-3x the tokens. Weighting them keeps one balance and one paywall while still
+# charging roughly what each costs to serve.
+#
+# Changing a weight here is the entire pricing change — every gate reads this
+# table, and `refund_credits` reverses whatever it charged.
 CREDIT_COST = {
     "debug_session": 1,
-    "circuit_generation": 1,
+    "circuit_generation": 2,
 }
 
 

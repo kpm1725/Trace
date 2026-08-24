@@ -54,7 +54,7 @@ export default function GenerateFromPrompt() {
       setResult(session.result as Circuit);
     } catch (e) {
       if (e instanceof ApiError && e.isPaywall) {
-        // TODO: open the credit paywall once the billing unit is settled.
+        // TODO: open the credit paywall. Products are defined in src/billing/products.ts.
         setError(`Out of credits — ${e.detail?.available ?? 0} left.`);
       } else {
         setError(e instanceof Error ? e.message : "Something went wrong.");

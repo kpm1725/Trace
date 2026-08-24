@@ -6,15 +6,17 @@
  * same contract seen from the client: a product missing here can never be
  * bought, and a product missing there can never be credited. The two sides must
  * stay in step.
- *
- * PENDING: these ids follow from the billing unit, which is not settled — see
- * the docstring at the top of `backend/billing.py`. If usage ends up metered
- * separately per feature rather than from one shared credit balance, this file
- * and the backend grant tables change together.
  */
 import { PurchasesPackage } from "react-native-purchases";
 
-/** Consumable credit packs. One credit currently buys one AI call, either kind. */
+/**
+ * Consumable credit packs.
+ *
+ * One pool covers both tools, priced by weight — a diagnosis costs 1 credit and
+ * a circuit generation costs 2 (`CREDIT_COST` in `backend/billing.py`). Pack
+ * sizes are deliberately not multiples of either: the paywall quotes credits,
+ * not calls, so a pack is never "three and a bit generations".
+ */
 export const CREDIT_PRODUCT_IDS = ["credits_10", "credits_25", "credits_60"] as const;
 
 /** Trace Unlimited — one subscription lifting the credit gate entirely. */

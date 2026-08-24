@@ -52,15 +52,70 @@ async def test_free_credits_are_spent_before_paid_ones(db, user):
 @pytest.mark.asyncio
 async def test_exhausted_account_raises_402_with_paywall_numbers(db, user):
     for _ in range(billing.FREE_CREDITS):
-        await billing.consume_credits(db, user, "circuit_generation")
+        await billing.consume_credits(db, user, "debug_session")
 
     with pytest.raises(HTTPException) as exc:
-        await billing.consume_credits(db, user, "circuit_generation")
+        await billing.consume_credits(db, user, "debug_session")
 
     assert exc.value.status_code == 402
     assert exc.value.detail["code"] == "insufficient_credits"
     assert exc.value.detail["available"] == 0
-    assert exc.value.detail["needed"] == billing.CREDIT_COST["circuit_generation"]
+    assert exc.value.detail["needed"] == billing.CREDIT_COST["debug_session"]
+
+
+@pytest.mark.asyncio
+async def test_a_generation_costs_more_than_a_diagnosis(db, user):
+    """The weighting is the pricing model, so it is worth pinning."""
+    assert billing.CREDIT_COST["circuit_generation"] > billing.CREDIT_COST["debug_session"]
+
+    spent = await billing.consume_credits(db, user, "circuit_generation")
+    assert spent["total_consumed"] == billing.CREDIT_COST["circuit_generation"]
+
+    ent = await billing.get_entitlement(db, user)
+    assert ent["total_available"] == billing.FREE_CREDITS - spent["total_consumed"]
+
+
+@pytest.mark.asyncio
+async def test_a_partial_balance_is_refused_rather_than_part_spent(db, user):
+    """A user with 1 credit cannot start a 2-credit generation.
+
+    The failure mode this rules out is charging the 1 credit, failing the call
+    for want of the second, and leaving the user poorer with nothing to show.
+    """
+    db.users.docs[0]["free_credits_used"] = billing.FREE_CREDITS - 1
+
+    with pytest.raises(HTTPException) as exc:
+        await billing.consume_credits(db, user, "circuit_generation")
+
+    assert exc.value.detail["available"] == 1
+    assert exc.value.detail["needed"] == 2
+    # Nothing was taken on the way out.
+    assert (await billing.get_entitlement(db, user))["total_available"] == 1
+
+
+@pytest.mark.asyncio
+async def test_a_charge_can_straddle_the_free_and_paid_balances(db, user):
+    """One free credit left and a 2-credit call: one from each.
+
+    Splitting like this is what keeps the free allowance from being stranded —
+    the alternative, refusing to mix, leaves a credit nobody can ever spend.
+    """
+    db.users.docs[0]["free_credits_used"] = billing.FREE_CREDITS - 1
+    db.users.docs[0]["paid_credits"] = 4
+
+    spent = await billing.consume_credits(db, user, "circuit_generation")
+    assert spent == {"free_consumed": 1, "paid_consumed": 1,
+                     "total_consumed": 2, "unlimited": False}
+
+    ent = await billing.get_entitlement(db, user)
+    assert ent["free_credits_remaining"] == 0
+    assert ent["paid_credits"] == 3
+
+    # And the refund puts both halves back where they came from.
+    await billing.refund_credits(db, user, spent)
+    ent = await billing.get_entitlement(db, user)
+    assert ent["free_credits_remaining"] == 1
+    assert ent["paid_credits"] == 4
 
 
 @pytest.mark.asyncio
