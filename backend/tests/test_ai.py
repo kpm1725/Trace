@@ -27,9 +27,7 @@ def thinking_block(text="considering the supply rail"):
 
 
 def test_extract_text_skips_thinking_blocks():
-    """The guard Scribe carries, and the reason it carries it.
-
-    With extended thinking on, a ThinkingBlock arrives ahead of the TextBlock
+    """With extended thinking on, a ThinkingBlock arrives ahead of the TextBlock
     and `resp.content[0].text` raises AttributeError. Trace does not enable
     thinking today, so this only ever matters after someone turns it on — at
     which point the crash looks unrelated to the change that caused it.
@@ -75,5 +73,6 @@ async def test_diagnose_rejects_an_unsupported_image_type():
                                 symptom="LED won't light")
 
 
-def test_model_is_the_one_scribe_runs():
+def test_model_is_pinned():
+    """A silent model swap changes cost, latency and output shape at once."""
     assert ai.MODEL == "claude-sonnet-5"

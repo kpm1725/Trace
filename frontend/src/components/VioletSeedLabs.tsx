@@ -5,11 +5,9 @@
  * mark is defined once and every placement stays identical, rather than each
  * screen hand-rolling its own wording and spacing.
  *
- * Lifted from Scribe unchanged in structure — the seed glyph is drawn with
- * plain views and border radii rather than an SVG. Trace does carry
- * `react-native-svg` for the circuit renderer, so the original reason (avoiding
- * a native dependency) no longer applies here; keeping it identical to Scribe's
- * is now the reason, so the mark cannot drift between the two apps.
+ * Shared with Scribe, so the seed glyph is drawn with plain views and border
+ * radii rather than an SVG — identical construction in both apps means the mark
+ * cannot drift between them.
  */
 import { StyleProp, StyleSheet, Text, View, ViewStyle } from "react-native";
 

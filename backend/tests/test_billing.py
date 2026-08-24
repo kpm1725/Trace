@@ -120,11 +120,10 @@ async def test_a_charge_can_straddle_the_free_and_paid_balances(db, user):
 
 @pytest.mark.asyncio
 async def test_refund_returns_the_credit_to_the_balance_it_came_from(db, user):
-    """Scribe's refund only decrements the free counter.
+    """A refund that only decremented the free counter would be wrong here.
 
-    Applied to a charge that came out of a purchased balance, that hands the
-    user back a free credit they had already used and quietly keeps the paid
-    one. Here the refund reverses what was actually taken.
+    Applied to a charge that came out of a purchased balance, it hands the user
+    back a free credit they had already used and quietly keeps the paid one.
     """
     db.users.docs[0]["free_credits_used"] = billing.FREE_CREDITS
     db.users.docs[0]["paid_credits"] = 3

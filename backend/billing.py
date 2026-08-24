@@ -66,9 +66,9 @@ def _later(a: Optional[datetime], b: Optional[datetime]) -> Optional[datetime]:
 def trace_unlimited_until(u: dict) -> Optional[datetime]:
     """Expiry of an active Trace Unlimited subscription, else None.
 
-    Every gate asks this rather than re-deriving the check. Scribe learned that
-    one the hard way: a gate that re-implements the comparison is a gate that
-    misses the next entitlement added beside it.
+    Every gate asks this rather than re-deriving the check — a gate that
+    re-implements the comparison is a gate that misses the next entitlement
+    added beside it.
     """
     until = _aware(u.get("trace_unlimited_until"))
     return until if until and until > now_utc() else None
@@ -151,9 +151,9 @@ async def consume_credits(db, user_id: str, action: str) -> dict:
 async def refund_credits(db, user_id: str, spent: dict) -> None:
     """Give back credits charged for a call that then failed upstream.
 
-    Scribe's equivalent refunds only the free counter, which silently keeps the
-    money when the charge came out of a paid balance. This reverses whatever was
-    actually taken.
+    Reverses whatever was actually taken, per balance. Refunding only the free
+    counter would hand back a free credit the user had already spent while
+    quietly keeping the paid one.
     """
     if spent.get("unlimited"):
         return

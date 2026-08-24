@@ -26,10 +26,9 @@ type Opts = {
 /**
  * A non-2xx response from the API.
  *
- * Scribe throws a plain `Error` with the status baked into the message, which
- * means the paywall has to string-match to find out it was a 402. Trace keeps
- * the status and the parsed body, so `err.status === 402` is the check and
- * `err.detail` carries the credit numbers the paywall renders.
+ * Keeps the status and the parsed body rather than baking them into a message
+ * string, so `err.status === 402` is the check a paywall makes and `err.detail`
+ * carries the credit numbers it renders.
  */
 export class ApiError extends Error {
   status: number;

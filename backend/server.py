@@ -2,8 +2,8 @@
 
 Violet Seed Labs. Built to grow.
 
-Layout follows Scribe's backend, which is deployed on the same stack (Railway,
-MongoDB Atlas, Anthropic) and has already been through Play Console review:
+Layout follows Scribe's backend, which runs the same stack — Railway, MongoDB
+Atlas, Anthropic:
 
     server.py               routes — auth, sessions, AI, billing reads
     ai.py                   Claude client, prompts, response parsing
@@ -64,9 +64,8 @@ db = mongo_client[DB_NAME]
 async def lifespan(_app: FastAPI):
     """Create indexes at boot.
 
-    Scribe uses `@app.on_event("startup")`, which this FastAPI version has
-    deprecated — it raises a DeprecationWarning on import. Same work, current
-    API. Carry this back to Scribe when its backend next unfreezes.
+    Lifespan rather than `@app.on_event("startup")`, which is deprecated in this
+    FastAPI version and raises a DeprecationWarning on import.
     """
     if not VALID_GOOGLE_CLIENT_IDS:
         # Not fatal — the service still serves health checks — but every

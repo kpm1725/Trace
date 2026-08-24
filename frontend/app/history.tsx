@@ -16,7 +16,7 @@ import { apiFetch } from "@/src/api/client";
 import { colors, fonts, radius, spacing, type } from "@/src/theme";
 import { SessionSummary } from "@/src/types";
 
-/** Both kinds of work in one reverse-chronological list, same as Scribe's library. */
+/** Both kinds of work in one reverse-chronological list. */
 export default function History() {
   const insets = useSafeAreaInsets();
   const router = useRouter();

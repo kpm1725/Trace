@@ -28,8 +28,8 @@ export const UNLIMITED_PRODUCT_IDS = [
 /**
  * Google Play reports a subscription's identifier as `productId:basePlanId`,
  * so compare against the part before the colon. `base_product_id` in
- * `revenuecat_webhook.py` normalises the same way — a mismatch here is how
- * Scribe's first unlimited subscription was charged and never credited.
+ * `revenuecat_webhook.py` normalises the same way; a mismatch between the two
+ * means a subscription that is charged and never credited.
  */
 function baseIdentifier(identifier: string): string {
   return identifier.split(":")[0];
@@ -46,9 +46,8 @@ export function matchesProduct(pack: PurchasesPackage, ids: readonly string[]): 
 /**
  * Everything the paywall offers: the credit packs plus Trace Unlimited.
  *
- * Scribe learned to build this in one place: paywalls that assembled their own
- * lists inline are how a subscription could be added to the catalogue and
- * appear on none of them.
+ * Built in one place. A paywall that assembles its own list inline is how a
+ * product gets added to the catalogue and shows up on no screen.
  */
 export function paywallProductIds(): readonly string[] {
   return [...CREDIT_PRODUCT_IDS, ...UNLIMITED_PRODUCT_IDS];

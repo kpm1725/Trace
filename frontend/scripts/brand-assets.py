@@ -9,9 +9,9 @@ gradient, with a via at each end. It is deliberately plain: enough to build and
 install against, not a finished identity. Replace it before submitting to
 either store.
 
-Committed as a script rather than as four opaque binaries, following Scribe's
-`scripts/brand-assets.py`: the art is reproducible, a colour change is a diff
-rather than a re-export, and nobody has to guess how the files were made.
+Committed as a script rather than as four opaque binaries: the art is
+reproducible, a colour change is a diff rather than a re-export, and nobody has
+to guess how the files were made.
 
 These are native assets. `eas update` cannot deliver them, so changing them
 needs a new build.

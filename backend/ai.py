@@ -5,19 +5,17 @@ authorise, meter, and persist — the prompt text, the model id, the schema, and
 the response parsing live here, so changing a prompt never means touching a
 route.
 
-Two calls, both on `claude-sonnet-5` (same model Scribe runs):
+Two calls, both on `claude-sonnet-5`:
 
   `diagnose_photo`   — vision. Board photo plus a symptom, in; a ranked
                        diagnosis, out.
   `generate_circuit` — text. A plain-English description, in; a netlist,
                        parts list and wiring steps, out.
 
-Both use structured outputs (`output_config.format`), which is the one place
-this file deliberately departs from Scribe. Scribe asks for JSON in the prompt
-and parses whatever comes back, which is fine when the payload is prose that
-happens to be structured. Here the payload drives a renderer: a missing `nets`
-key is a blank screen, not a cosmetic problem. `output_config` makes the API
-enforce the schema instead of the prompt asking nicely.
+Both use structured outputs (`output_config.format`) rather than asking for JSON
+in the prompt and parsing whatever comes back. The payload drives a renderer: a
+missing `nets` key is a blank screen, not a cosmetic problem. `output_config`
+makes the API enforce the schema instead of the prompt asking nicely.
 """
 import json
 import logging
@@ -30,9 +28,8 @@ from schemas import CIRCUIT_SCHEMA, DIAGNOSIS_SCHEMA
 
 log = logging.getLogger("trace")
 
-# Sonnet 5 — matches Scribe's `claude-sonnet-5`, and the vision and structured
-# output paths below are both supported on it. Named once here so a model change
-# is a one-line change.
+# Sonnet 5 supports both the vision and structured-output paths used below.
+# Named once here so a model change is a one-line change.
 MODEL = "claude-sonnet-5"
 
 # Claude accepts these image types. The client resizes and re-encodes before
@@ -59,7 +56,7 @@ def extract_text_block(resp) -> str:
     currently enable extended thinking, so today this always finds the first
     block — the guard is here because the failure it prevents shows up only
     after someone turns thinking on, by which time the crash looks unrelated to
-    the change that caused it. Scribe carries the identical helper.
+    the change that caused it.
 
     If thinking is ever enabled on Sonnet 5, the parameter is
     `thinking={"type": "adaptive"}` — the older `budget_tokens` form is rejected

@@ -26,15 +26,13 @@ are not — see [What's not built yet](#whats-not-built-yet).
 | **Hosting** | Railway (backend), EAS Build (iOS/Android) |
 
 This mirrors [Scribe](https://github.com/kpm1725/manuscript_to_screenplay), which
-runs the same stack in production. Three things differ, each on purpose:
+runs the same stack in production — same layout, same auth flow, same billing
+shape, same EAS configuration.
 
-1. **Expo SDK 57, not 52.** Scribe's README says 52; its `package.json` says
-   `expo: ~57.0.11`. The code is the truth — the README is stale.
-2. **Structured outputs instead of prompt-and-parse.** Scribe asks for JSON in
-   the prompt and parses what comes back. Trace's payload drives a renderer, so
-   `output_config.format` makes the API enforce the schema. See `backend/ai.py`.
-3. **Lifespan instead of `@app.on_event`.** Scribe's form is deprecated in the
-   pinned FastAPI version and raises a `DeprecationWarning` at import.
+One thing is genuinely new here: **structured outputs**. Both Claude calls set
+`output_config.format`, so the API enforces the response schema rather than the
+prompt asking for JSON and the server parsing whatever arrives. The payload
+drives a renderer, where a missing key is a blank screen. See `backend/ai.py`.
 
 ---
 
@@ -120,12 +118,10 @@ server-side because a client that can grant itself credits will.
 
 RevenueCat rather than `expo-in-app-purchases` (discontinued — last npm release
 about three years ago, and removed from Expo's own docs) or `react-native-iap`
-direct (which would mean writing receipt validation against both Apple and
-Google from scratch). Scribe already ships RevenueCat in production, so the
-webhook, the idempotency guard, and the `productId:basePlanId` normalisation
-here are a port of code that works rather than a first attempt.
+direct, which would mean writing receipt validation against both Apple and
+Google from scratch.
 
-The ledger in `backend/billing.py` mirrors Scribe's chunk billing: a lifetime
+The ledger in `backend/billing.py` follows Scribe's chunk billing: a lifetime
 free allowance, a prepaid balance bought as consumables, and a time-boxed
 unlimited pass, checked in that order.
 
@@ -156,10 +152,7 @@ be bought or never be credited.
 
 ---
 
-## The Gradle fix
-
-Scribe hit a Gradle failure with its native IAP dependency, and the fix is
-already in Scribe — carried here from the start rather than rediscovered.
+## Native builds
 
 `android/` and `ios/` are in **both** `.gitignore` and `.easignore`. Keeping
 them out of the EAS upload forces a fresh `expo prebuild` on the build server,
@@ -235,18 +228,20 @@ unless noted.
   as plain text so the round trip is testable; the designed views, shared with
   `session/[id].tsx`, are next.
 - **The diagram renderer.** See [above](#rendering-the-netlist).
-- **The paywall and the purchase flow.** `useRevenueCat`, the paywall sheet, and
-  restore-purchases are all waiting on the billing unit.
-- **Restore purchases.** Scribe's `/api/billing/restore` reads the subscriber
-  from RevenueCat under the caller's own id; port it once products exist.
+- **The paywall and the purchase flow.** `useRevenueCat` and the paywall sheet.
+  Products need creating in App Store Connect and Play Console first.
+- **Restore purchases.** `POST /api/billing/restore` — the client re-reads the
+  device receipt into RevenueCat, then the server reads the subscriber back
+  under the caller's own id and extends entitlements, never shortening one.
+  Subscriptions only: consumables are spent once granted, so re-granting them
+  from purchase history would hand out balance on every tap.
 - **Component reference** — deferred to v1.1, per the MVP scope. The screen
   exists so navigation is complete.
 - **Brand assets.** `frontend/assets/images/` holds generated placeholders.
   Replace before either store submission; `scripts/brand-assets.py` regenerates
   them.
 - **iOS.** The bundle identifier and Info.plist strings are set, but shipping
-  needs an Apple Developer account and a RevenueCat Apple key. Scribe never
-  cleared this step.
+  needs an Apple Developer account and a RevenueCat Apple key.
 
 ---
 

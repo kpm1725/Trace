@@ -4,11 +4,10 @@ import { useFonts } from "expo-font";
  * Load app fonts from local assets.
  *
  * Inter for the interface, Space Mono for anything a user might transcribe onto
- * a board — component values, pin names, net names. Both are OFL-licensed and
- * carried over from Scribe's `assets/fonts/`.
+ * a board — component values, pin names, net names. Both are OFL-licensed.
  *
- * Trace drops Scribe's Cormorant Garamond: a literary serif is exactly wrong on
- * a bench tool.
+ * No serif face: this is a bench tool, and the UI should read as instrumentation
+ * rather than as prose.
  */
 export function useAppFonts() {
   return useFonts({

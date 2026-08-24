@@ -6,14 +6,14 @@ RevenueCat does, by POSTing here. That is the whole reason fulfilment is
 server-side: a client that could assert its own entitlements is a client that
 can grant itself unlimited credits.
 
-Structure mirrors Scribe's `backend/revenuecat_webhook.py`, including the parts
-that exist because of specific incidents there:
+Three details are easy to get wrong and expensive when they are:
 
   - `base_product_id` strips Google Play's `:basePlanId` suffix. Play identifies
     a subscription as `productId:basePlanId` and RevenueCat passes that through,
     so `trace_unlimited_monthly` arrives as `trace_unlimited_monthly:monthly`
-    and matches no grant table keyed on the bare id. The client normalises
-    identically in `frontend/src/billing/products.ts`.
+    and matches no grant table keyed on the bare id — the purchase is charged
+    and never credited. The client normalises identically in
+    `frontend/src/billing/products.ts`.
 
   - A delivery that credits nothing is kept `fulfilled: False` with a reason
     rather than being retired. Marking it fulfilled would permanently and

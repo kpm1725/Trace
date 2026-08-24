@@ -2,12 +2,12 @@
 # project, and unlike .gitignore it is honored even when the CLI can't use git.
 #
 # Keeping android/ and ios/ out of the upload is what forces EAS to run a fresh
-# `expo prebuild` remotely. This is the fix for the Gradle failure hit on
-# Scribe: a stale local android/ folder from an older SDK ships its own Gradle
-# wrapper, which then collides with what the current SDK and its native
-# dependencies (react-native-purchases, react-native-svg) expect. Regenerating
-# the native project on the build server means the wrapper always matches the
-# SDK. Do not commit android/ or ios/, and do not remove these two lines.
+# `expo prebuild` remotely. A stale local android/ folder from an older SDK
+# ships its own Gradle wrapper, which then collides with what the current SDK
+# and its native dependencies (react-native-purchases, react-native-svg)
+# expect. Regenerating the native project on the build server means the wrapper
+# always matches the SDK. Do not commit android/ or ios/, and do not remove
+# these two lines.
 
 # Environment
 .env

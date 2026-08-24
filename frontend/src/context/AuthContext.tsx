@@ -78,8 +78,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const idToken = response.authentication?.idToken;
     if (!idToken) {
-      // Scribe silently does nothing here, which looks to the user like the
-      // button did not work.
+      // Failing silently here looks to the user like the button did nothing,
+      // and the cause is almost always a misconfigured OAuth client type.
       setError("Google didn't return an ID token. Check the OAuth client type.");
       return;
     }
