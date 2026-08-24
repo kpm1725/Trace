@@ -2,17 +2,16 @@
  * The generated-circuit view. Shared by `app/generate.tsx` and
  * `app/session/[id].tsx`.
  *
- * The diagram is not built yet (see README, "Rendering the netlist"), so this
- * renders the netlist as a **connection list** rather than leaving a hole. That
- * is not a stand-in for the drawing — a connection list is how a netlist is
- * conventionally written down, and it is enough to actually build the circuit
- * from. When the renderer lands it goes above this, and this stays: a drawing
- * and its netlist answer different questions ("what is this?" vs "does R2 go to
- * pin 6 or pin 7?").
+ * The diagram and the connection list both stay: a drawing answers "what is
+ * this?" and a netlist answers "does R2 go to pin 6 or pin 7?". The list is
+ * also the fallback when a circuit is too tangled to draw well.
  */
+import { useMemo } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
+import { layoutCircuit } from "@/src/circuit/layout";
+import { CircuitDiagram } from "@/src/components/CircuitDiagram";
 import { Body, Callout, Chip, Collapsible, Mono, SectionHeading } from "@/src/components/ui";
 import { colors, fonts, radius, spacing, type } from "@/src/theme";
 import { Circuit, CircuitComponent, Net } from "@/src/types";
@@ -74,6 +73,10 @@ export function CircuitResult({ circuit }: { circuit: Circuit }) {
   // Nets reference components by id; the connection list wants their labels.
   const byId = new Map(circuit.components.map((c) => [c.id, c]));
 
+  // Computed once here rather than inside the diagram, because its `warnings`
+  // are rendered outside it.
+  const layout = useMemo(() => layoutCircuit(circuit), [circuit]);
+
   return (
     <View testID="circuit-result">
       <Text style={styles.title}>{circuit.title}</Text>
@@ -90,13 +93,22 @@ export function CircuitResult({ circuit }: { circuit: Circuit }) {
         <Callout tone="warning" title="Take care" items={circuit.cautions} testID="circuit-cautions" />
       )}
 
-      <View style={styles.diagramPlaceholder} testID="circuit-diagram-placeholder">
-        <Ionicons name="git-network-outline" size={26} color={colors.onSurfaceTertiary} />
-        <Text style={styles.placeholderText}>Diagram coming soon</Text>
-        <Text style={styles.placeholderSub}>
-          Every connection is listed below — the circuit is fully buildable from it.
-        </Text>
+      <View style={styles.diagramFrame}>
+        <CircuitDiagram layout={layout} />
       </View>
+
+      {layout.warnings.length > 0 && (
+        // Structured output guarantees the response parses; it cannot guarantee
+        // the circuit is coherent. Surfacing these matters more than the tidy
+        // drawing above them — a diagram with a wire missing looks every bit as
+        // authoritative as a correct one.
+        <Callout
+          tone="warning"
+          title="Check this netlist"
+          items={layout.warnings}
+          testID="circuit-netlist-warnings"
+        />
+      )}
 
       {circuit.parts_list.length > 0 && <SectionHeading>Parts</SectionHeading>}
       {circuit.parts_list.map((part, i) => (
@@ -159,28 +171,12 @@ const styles = StyleSheet.create({
   title: { fontFamily: fonts.sansBold, fontSize: type.xl, color: colors.onSurface },
   supplyRow: { flexDirection: "row", gap: spacing.sm, marginTop: spacing.md, flexWrap: "wrap" },
 
-  diagramPlaceholder: {
-    alignItems: "center",
-    gap: spacing.xs,
-    paddingVertical: spacing["2xl"],
-    paddingHorizontal: spacing.lg,
+  diagramFrame: {
     borderWidth: 1,
-    borderStyle: "dashed",
     borderColor: colors.border,
     borderRadius: radius.lg,
+    overflow: "hidden",
     marginTop: spacing.lg,
-  },
-  placeholderText: {
-    fontFamily: fonts.sansMedium,
-    fontSize: type.base,
-    color: colors.onSurfaceSecondary,
-    marginTop: spacing.xs,
-  },
-  placeholderSub: {
-    fontFamily: fonts.sans,
-    fontSize: type.sm,
-    color: colors.onSurfaceTertiary,
-    textAlign: "center",
   },
 
   partRow: {

@@ -8,8 +8,8 @@ the one measurement that settles them. Or describe a circuit in plain English
 and get a netlist, a parts list, and wiring steps.
 
 **Status: pre-alpha.** Backend routes, auth, the credit ledger, both Claude
-calls, and both result views are implemented; the backend is tested. The diagram
-renderer and the purchase flow are not yet built — see
+calls, both result views, and the circuit diagram are implemented; the backend
+and the diagram layout are tested. The purchase flow is not yet built — see
 [What's not built yet](#whats-not-built-yet).
 
 ---
@@ -66,14 +66,18 @@ drives a renderer, where a missing key is a blank screen. See `backend/ai.py`.
     │   ├── api/client.ts       # apiFetch + ApiError (402 carries paywall numbers)
     │   ├── context/AuthContext.tsx
     │   ├── billing/products.ts # RevenueCat ids, mirroring the backend grant tables
+    │   ├── circuit/layout.ts   # netlist -> coordinates. Pure, no React.
     │   ├── components/
     │   │   ├── ui.tsx              # SectionHeading, Callout, Collapsible, Chip
+    │   │   ├── CircuitDiagram.tsx  # draws layout.ts's output as SVG
     │   │   ├── DiagnosisResult.tsx # shared by debug.tsx and session/[id].tsx
     │   │   ├── CircuitResult.tsx   # shared by generate.tsx and session/[id].tsx
     │   │   └── VioletSeedLabs.tsx
     │   ├── types.ts            # mirrors backend/schemas.py
     │   └── theme.ts
-    ├── scripts/brand-assets.py # regenerates the placeholder icon and splash
+    ├── scripts/
+    │   ├── brand-assets.py     # regenerates the placeholder icon and splash
+    │   └── diagram-check.js    # layout invariants + SVG previews
     ├── app.json
     └── eas.json
 ```
@@ -100,17 +104,50 @@ netlist is the circuit's actual topology, and the client renders it.
 
 ### Rendering the netlist
 
-This is the largest single piece of work left, and it is worth being honest
-about the size of it. A netlist is a graph; a schematic is a *drawing* of that
-graph, and turning one into the other automatically is a real problem — EDA
-tools have worked at it for decades and still ship manual placement.
+A netlist is a graph; a schematic is a *drawing* of that graph, and turning one
+into the other automatically is a real problem — EDA tools have worked at it for
+decades and still ship manual placement. Trace does not attempt a symbol
+schematic. It draws a **rail-and-ladder diagram**, which is the layout a
+hobbyist sketches on paper:
 
-The plan is to render a **breadboard-style block-and-wire view**, not a proper
-schematic: components as labelled boxes in a simple layered layout, nets as
-orthogonal wires, power and ground as rails top and bottom. That is achievable,
-reads well on a phone, and matches what a hobbyist is actually looking at. A
-schematic-quality renderer with symbol glyphs and routed nets is a v2 project on
-its own. `react-native-svg` is installed and version-matched for this.
+- **Power and ground become horizontal rails**, top and bottom, rather than
+  ordinary nets. On a small circuit that removes most of the wires, and it
+  matches how these are read — up is positive, down is ground.
+- **One component per row**, full width. The canvas comes out tall and narrow,
+  which is the shape of a phone, and the page already scrolls vertically.
+- **Every signal net gets a vertical trunk in a side lane.** Nets whose vertical
+  spans don't overlap share a lane, so the margins stay narrow. Wires meet pins
+  at right angles, and a junction dot marks a real connection — a crossing
+  without one is not connected, per the usual convention.
+
+Rail pins do **not** drop straight to their rail. They step out into the gap
+beside their row, run to a riser outside every signal lane, and climb from
+there. A straight drop crosses whatever boxes lie between, and since a box is
+opaque the wire appears to terminate at it — a diagram that invents a
+connection is worse than one that is merely ugly.
+
+The split is the important part: `src/circuit/layout.ts` is pure and takes a
+`Circuit` to coordinates, and `src/components/CircuitDiagram.tsx` only turns
+those coordinates into SVG. So the hard half runs in plain node:
+
+```bash
+npm run diagram:check            # invariants over four fixtures
+npm run diagram:check -- --svg   # also write previews to .diagram/
+```
+
+The checks assert what actually goes wrong: no wire crosses a box, every
+segment is orthogonal, every connected pin is reached by a wire, boxes don't
+overlap, nothing leaves the canvas, and the same circuit always lays out
+identically. Both of the defects described above were caught that way.
+
+`layoutCircuit` also returns `warnings` — a net naming a pin its component
+never declared, a component nothing connects to, a net with one end. Structured
+output guarantees the response *parses*; it cannot guarantee the circuit is
+coherent, and those get shown to the user rather than silently dropped.
+
+What this is not: symbol glyphs, crossing minimisation, or anything resembling
+schematic-quality routing. Components are labelled boxes. That is a deliberate
+v1 boundary, not an oversight.
 
 ---
 
@@ -229,9 +266,6 @@ unless noted.
 
 ## What's not built yet
 
-- **The diagram renderer.** See [above](#rendering-the-netlist). Everything
-  around it is in place: `<CircuitResult>` renders the netlist as a connection
-  list, which is buildable from today, and the drawing slots in above it.
 - **The paywall and the purchase flow.** `useRevenueCat` and the paywall sheet.
   Products need creating in App Store Connect and Play Console first.
 - **Restore purchases.** `POST /api/billing/restore` — the client re-reads the

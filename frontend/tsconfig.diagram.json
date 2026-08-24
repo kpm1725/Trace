@@ -1,0 +1,13 @@
+{
+  "//": "Compiles src/circuit/layout.ts to CommonJS for `npm run diagram:check`. Extends the project config so `@/*` resolves; layout.ts imports its types with `import type`, so the emitted JavaScript has no imports and runs in plain node.",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "rootDir": "./src",
+    "outDir": "node_modules/.cache/trace-diagram",
+    "module": "commonjs",
+    "declaration": false,
+    "skipLibCheck": true
+  },
+  "include": ["src/circuit/layout.ts", "src/types.ts"]
+}

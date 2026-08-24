@@ -3,7 +3,7 @@
   "main": "expo-router/entry",
   "version": "0.1.0",
   "private": true,
-  "description": "Trace — AI-assisted circuit debugging for hobby electronics. A Violet Seed Labs app.",
+  "description": "Trace \u2014 AI-assisted circuit debugging for hobby electronics. A Violet Seed Labs app.",
   "scripts": {
     "start": "expo start",
     "android": "expo run:android",
@@ -11,7 +11,8 @@
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
     "lint": "expo lint",
-    "doctor": "npx expo-doctor"
+    "doctor": "npx expo-doctor",
+    "diagram:check": "tsc -p tsconfig.diagram.json && node scripts/diagram-check.js"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",

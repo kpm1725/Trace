@@ -28,3 +28,6 @@ ios/
 npm-debug.*
 yarn-debug.*
 yarn-error.*
+
+# Diagram previews from `npm run diagram:check -- --svg`
+.diagram/
