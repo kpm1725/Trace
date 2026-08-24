@@ -65,12 +65,43 @@ class FakeCollection:
     async def insert_one(self, doc):
         self.docs.append(dict(doc))
 
+    async def delete_many(self, query):
+        before = len(self.docs)
+        self.docs[:] = [
+            d for d in self.docs if not all(d.get(k) == v for k, v in query.items())
+        ]
+
+        class Result:
+            deleted_count = before - len(self.docs)
+
+        return Result()
+
+    async def delete_one(self, query):
+        for i, d in enumerate(self.docs):
+            if all(d.get(k) == v for k, v in query.items()):
+                del self.docs[i]
+
+                class Result:
+                    deleted_count = 1
+
+                return Result()
+
+        class Result:
+            deleted_count = 0
+
+        return Result()
+
 
 class FakeDB:
     def __init__(self):
         self._collections = {}
 
     def __getattr__(self, name):
+        return self._collections.setdefault(name, FakeCollection())
+
+    # Motor exposes collections both as `db.name` and `db["name"]`, and the
+    # deletion route uses the subscript form to walk USER_COLLECTIONS.
+    def __getitem__(self, name):
         return self._collections.setdefault(name, FakeCollection())
 
 

@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Trace — Privacy Policy</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin:0; padding:2.5rem 1.25rem; background:#1A1428; color:#FAF9FB;
+         font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
+  main { max-width:38rem; margin:0 auto; }
+  h1 { font-size:1.9rem; margin:0 0 .25rem; letter-spacing:.02em; }
+  h2 { font-size:1.05rem; margin:2.25rem 0 .5rem; color:#C4B5FD; }
+  p, li { color:#CFC7DE; }
+  a { color:#C4B5FD; }
+  ul { padding-left:1.2rem; }
+  .updated { color:#9B90B0; font-size:.9rem; margin:0 0 2rem; }
+  .note { border-left:3px solid #8B5CF6; padding:.75rem 1rem; margin:1.5rem 0;
+          background:#241C36; border-radius:0 8px 8px 0; }
+  footer { margin-top:3.5rem; padding-top:1.25rem; border-top:1px solid #332A4A;
+           font-size:.85rem; color:#9B90B0; }
+</style>
+</head>
+<body><main>
+
+<h1>Privacy Policy</h1>
+<p class="updated">Trace, by Violet Seed Labs · Last updated: TODO — set before publishing</p>
+
+<p>Trace is an AI-assisted circuit debugging app. This policy describes what it
+collects, what it does with it, and what it does not do. It is written to match
+how the app actually behaves; if you find a discrepancy, the discrepancy is a
+bug and we would like to hear about it.</p>
+
+<h2>What we collect</h2>
+<ul>
+  <li><strong>Your Google account identity</strong> — email address, name, and
+      profile picture, received when you sign in with Google. We use it to
+      identify your account and nothing else. We never receive your Google
+      password.</li>
+  <li><strong>What you send for analysis</strong> — the symptom text and any
+      notes you type, and the plain-English descriptions you write for circuit
+      generation.</li>
+  <li><strong>What the app produces</strong> — the diagnoses and circuits
+      generated for you, saved to your history so you can reopen them.</li>
+  <li><strong>Purchase records</strong> — which credit packs or subscriptions
+      you bought, so your balance can be credited. Payment card details are
+      handled entirely by Apple or Google and never reach us.</li>
+</ul>
+
+<div class="note">
+  <strong>Photographs are not stored.</strong> A photo you send for diagnosis is
+  transmitted for that one request, analysed, and discarded. It is not written
+  to our database and is not kept in your history — the saved diagnosis contains
+  the model's written description of what it saw, not the image.
+</div>
+
+<h2>Who else sees it</h2>
+<p>Three processors, each doing one job:</p>
+<ul>
+  <li><strong>Anthropic</strong> receives the photo, symptom, or description for
+      each request, in order to produce the response. See
+      <a href="https://www.anthropic.com/legal/privacy">Anthropic's privacy
+      policy</a>.</li>
+  <li><strong>Google</strong> handles sign-in, and Google Play handles purchases
+      on Android.</li>
+  <li><strong>RevenueCat</strong> processes in-app purchases and tells our
+      server what to credit. It receives your Trace account identifier so the
+      purchase reaches the right account.</li>
+</ul>
+<p>We do not sell your data, we do not share it for advertising, and there are
+no third-party advertising or analytics SDKs in the app.</p>
+
+<h2>Where it is stored</h2>
+<p>Account data and saved sessions live in MongoDB Atlas; the API runs on
+Railway. Data is transmitted over TLS.</p>
+
+<h2>How long we keep it</h2>
+<p>Your account and its saved sessions are kept until you delete them. You can
+delete an individual session at any time from its detail screen, and deleting
+your account removes everything at once. Expired sign-in sessions are discarded
+automatically. Anonymised purchase records may be retained where the app stores
+require it for refunds and accounting.</p>
+
+<h2>Deleting your account</h2>
+<p>In the app: <strong>About → Delete my account</strong>. It asks you to type
+DELETE to confirm, then removes your account and all of its data immediately and
+permanently.</p>
+<p>If you cannot open the app, see
+<a href="data-deletion.html">the account deletion page</a>.</p>
+<p>Deleting your account does <em>not</em> cancel an active subscription — cancel
+that in your Google Play or App Store account, or billing continues.</p>
+
+<h2>Your rights</h2>
+<p>You can access your data through the app, delete it as described above, and
+ask us any question about it at the contact address below. If you are in the UK,
+EU, or a jurisdiction with comparable law, you also have the right to request a
+copy of your data and to object to processing — write to us and we will action
+it.</p>
+
+<h2>Children</h2>
+<p>Trace is not directed at children under 13 and we do not knowingly collect
+their data. If you believe a child has created an account, contact us and we
+will delete it.</p>
+
+<h2>Safety</h2>
+<p>Trace's diagnoses are generated by an AI model from a photograph and a
+description. They are suggestions, not professional advice, and the app states
+plainly what a photograph cannot determine. You are responsible for your own
+safety when working on a circuit — particularly anything connected to mains
+voltage, or any battery chemistry capable of a thermal event.</p>
+
+<h2>Changes</h2>
+<p>If this policy changes materially we will update the date at the top and,
+where the change affects how your data is used, notify you in the app.</p>
+
+<h2>Contact</h2>
+<p>TODO — set a support email before publishing, and use the same address in
+<code>SUPPORT_EMAIL</code> on the backend and in the store listings.</p>
+
+<footer>Trace is a Violet Seed Labs app. Built to grow.</footer>
+
+</main></body></html>

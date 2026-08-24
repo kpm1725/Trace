@@ -8,10 +8,13 @@ the one measurement that settles them. Or describe a circuit in plain English
 and get a netlist, a parts list, and wiring steps.
 
 **Status: pre-alpha.** Every MVP feature is implemented — auth, both Claude
-calls, both result views, the circuit diagram, the credit ledger, and the
-purchase flow — with 39 backend tests and the diagram layout under its own
-checks. What remains is store and account setup rather than code; see
-[What's not built yet](#whats-not-built-yet).
+calls, both result views, the circuit diagram, the credit ledger, the purchase
+flow, and the store-compliance surface — with 44 backend tests and the diagram
+layout under its own checks. What remains is store and account setup rather than
+code; see [What's not built yet](#whats-not-built-yet).
+
+Nothing here has run on a device or against a live backend yet. It typechecks
+and its tests pass, which is not the same thing.
 
 ---
 
@@ -51,6 +54,7 @@ drives a renderer, where a missing key is a blank screen. See `backend/ai.py`.
 │   ├── requirements.txt
 │   ├── nixpacks.toml           # Railway build
 │   └── tests/                  # run with no Mongo, no network, no API key
+├── docs/                       # privacy policy + deletion page (host these)
 └── frontend/
     ├── app/                    # expo-router routes
     │   ├── _layout.tsx
@@ -74,10 +78,12 @@ drives a renderer, where a missing key is a blank screen. See `backend/ai.py`.
     │   ├── components/
     │   │   ├── ui.tsx              # SectionHeading, Callout, Collapsible, Chip
     │   │   ├── Paywall.tsx         # one sheet; prices read from the store
+    │   │   ├── DeleteAccountDialog.tsx
     │   │   ├── CircuitDiagram.tsx  # draws layout.ts's output as SVG
     │   │   ├── DiagnosisResult.tsx # shared by debug.tsx and session/[id].tsx
     │   │   ├── CircuitResult.tsx   # shared by generate.tsx and session/[id].tsx
     │   │   └── VioletSeedLabs.tsx
+    │   ├── links.ts            # public URLs, defined once
     │   ├── types.ts            # mirrors backend/schemas.py
     │   └── theme.ts
     ├── scripts/
@@ -248,6 +254,50 @@ client. A product that ever needs renaming needs renaming in both.
 
 ---
 
+## Store compliance
+
+Three things both stores require of an app that creates accounts and sells
+things, all of them wired up:
+
+**Account deletion.** `About → Delete my account` opens a dialog that names what
+goes, requires the word DELETE to be typed, and warns — separately and in amber —
+that deleting the account does *not* cancel a subscription. That warning is the
+one that costs people money: someone who assumes otherwise keeps being billed
+for an account that no longer exists.
+
+Server-side, `DELETE /api/auth/account` purges every collection in
+`USER_COLLECTIONS` plus purchase records and sessions, and removes the user row
+**last** — if a purge fails partway the caller still holds a valid session and
+can retry, whereas deleting identity first would strand the rest with no
+authenticated way to reach it. Four tests cover it, including that the purge is
+scoped to the caller and that identity really is removed last.
+
+**A deletion route reachable without the app**, which Play requires. `docs/`
+holds the page; the backend serves a copy at `GET /account-deletion`.
+
+**A privacy policy.** `docs/index.html`. It describes the app's actual
+behaviour, including the part worth stating plainly: photographs sent for
+diagnosis are never stored. They are transmitted for one request and discarded,
+so a saved diagnosis holds the model's written description of the board, not the
+image.
+
+### Before submitting
+
+1. Publish `docs/` — see `docs/README.md`. This repo is private, so the
+   arrangement is a small public repo (`trace-privacy`) served by GitHub Pages.
+2. Fill in every `TODO` in `docs/index.html` and `docs/data-deletion.html`: the
+   support address and the effective date.
+3. Put the published URLs into `frontend/src/links.ts`, the backend's
+   `PRIVACY_POLICY_URL`, and both store listings — all four must agree.
+4. Set `SUPPORT_EMAIL` on the backend to the same address.
+5. Replace the placeholder brand assets (`frontend/scripts/brand-assets.py`).
+
+The policy is written to match the code. If you change what the app stores,
+change it there too — a policy describing behaviour the app does not have is
+worse than no policy.
+
+---
+
 ## Native builds
 
 `android/` and `ios/` are in **both** `.gitignore` and `.easignore`. Keeping
@@ -317,6 +367,9 @@ unless noted.
 | `POST` | `/billing/restore` | Reconcile entitlements against the store |
 | `POST` | `/webhook/revenuecat` | RevenueCat webhook — fulfils purchases (no auth header) |
 
+Plus two unprefixed public routes: `GET /health`, and `GET /account-deletion` —
+a deletion page reachable without installing the app.
+
 ---
 
 ## What's not built yet
@@ -325,6 +378,9 @@ unless noted.
   creating in App Store Connect and Play Console — see
   [Setting up the products](#setting-up-the-products). Until they exist the
   paywall opens and says no purchase options are configured.
+- **Publishing `docs/`.** The privacy policy and deletion pages are written but
+  not hosted, and both carry `TODO` markers for the support address and
+  effective date. See [Store compliance](#store-compliance).
 - **Component reference** — deferred to v1.1, per the MVP scope. The screen
   exists so navigation is complete.
 - **Brand assets.** `frontend/assets/images/` holds generated placeholders.

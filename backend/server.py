@@ -25,6 +25,7 @@ from typing import Optional
 import httpx
 from dotenv import load_dotenv
 from fastapi import APIRouter, FastAPI, Header, HTTPException
+from fastapi.responses import HTMLResponse
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field
 from starlette.middleware.cors import CORSMiddleware
@@ -52,6 +53,19 @@ VALID_GOOGLE_CLIENT_IDS = [
 
 SUPPORT_EMAIL = os.environ.get("SUPPORT_EMAIL", "")
 
+# The privacy policy and the account-deletion request page. Both stores require
+# a policy URL, and Play additionally requires a deletion route reachable
+# *without installing the app*.
+#
+# These are hosted statically rather than served from here on purpose: this
+# service being down is exactly when someone might be trying to find them, and
+# a review that lands during a deploy should not see a 502. The
+# `/account-deletion` route below is a supplement, not the canonical address.
+PRIVACY_POLICY_URL = os.environ.get(
+    "PRIVACY_POLICY_URL", "https://kpm1725.github.io/trace-privacy/"
+)
+
+
 # Collections keyed to a user_id. Account deletion and index creation both read
 # this, so a new collection cannot be added to one and forgotten by the other —
 # the failure mode there is orphaned user data surviving a deletion request.
@@ -76,10 +90,15 @@ async def lifespan(_app: FastAPI):
     await db.users.create_index("user_id", unique=True)
     await db.users.create_index("email", unique=True)
     await db.user_sessions.create_index("session_token", unique=True)
+    # Mongo reaps expired sessions on its own. `require_user` already refuses an
+    # expired token, so this is about not keeping a token record for someone who
+    # stopped using the app a year ago.
+    await db.user_sessions.create_index("expires_at", expireAfterSeconds=0)
     await db.sessions.create_index([("user_id", 1), ("created_at", -1)])
     await ensure_revenuecat_indexes(db)
     log.info("Trace API ready")
     yield
+    mongo_client.close()
 
 
 app = FastAPI(title="Trace API", lifespan=lifespan)
@@ -413,3 +432,75 @@ app.include_router(revenuecat_router, prefix="/api/webhook")
 @app.get("/health")
 async def health():
     return {"ok": True, "service": "trace", "company": "Violet Seed Labs"}
+
+
+ACCOUNT_DELETION_PAGE = """<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Delete your Trace account</title>
+<style>
+  :root {{ color-scheme: dark; }}
+  body {{ margin:0; padding:2.5rem 1.25rem; background:#1A1428; color:#FAF9FB;
+         font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }}
+  main {{ max-width:34rem; margin:0 auto; }}
+  h1 {{ font-size:1.75rem; margin:0 0 .5rem; letter-spacing:.02em; }}
+  h2 {{ font-size:1.05rem; margin:2rem 0 .5rem; color:#C4B5FD; }}
+  p, li {{ color:#CFC7DE; }}
+  a {{ color:#C4B5FD; }}
+  ol {{ padding-left:1.2rem; }}
+  .note {{ border-left:3px solid #FBBF24; padding:.75rem 1rem; margin:1.5rem 0;
+           background:#241C36; border-radius:0 8px 8px 0; }}
+  footer {{ margin-top:3rem; font-size:.85rem; color:#9B90B0; }}
+</style></head>
+<body><main>
+  <h1>Delete your Trace account</h1>
+  <p>Deleting your Trace account permanently removes your account and everything
+     stored with it — every saved diagnosis and generated circuit, and your
+     credit balance. It cannot be undone.</p>
+
+  <h2>From inside the app</h2>
+  <ol>
+    <li>Open Trace and sign in.</li>
+    <li>Go to <strong>About</strong>.</li>
+    <li>Tap <strong>Delete my account</strong> and confirm.</li>
+  </ol>
+
+  <h2>If you can't open the app</h2>
+  <p>{contact}</p>
+
+  <div class="note">
+    <strong>Deleting your account does not cancel a subscription.</strong>
+    Cancel it in your Google Play or App Store account, or billing continues for
+    an account that no longer exists.
+  </div>
+
+  <h2>What is kept, and for how long</h2>
+  <p>Everything tied to your account is deleted immediately. Photographs you
+     send for diagnosis are never stored — they are used for the one request and
+     discarded. Anonymised payment records may be retained where the app stores
+     require it for refunds and accounting.</p>
+
+  <footer>
+    <a href="{privacy}">Privacy policy</a> · Trace is a Violet Seed Labs app.
+  </footer>
+</main></body></html>"""
+
+
+@app.get("/account-deletion", response_class=HTMLResponse)
+async def account_deletion_page():
+    """A deletion route reachable without installing the app, as Play requires.
+
+    The canonical address is the static one hosted alongside the privacy policy
+    — this service being down is exactly when someone might be looking for it.
+    This copy exists so the route resolves from the API domain too.
+    """
+    contact = (
+        f'Email <a href="mailto:{SUPPORT_EMAIL}">{SUPPORT_EMAIL}</a> from the address '
+        "you signed up with, and we will delete the account for you."
+        if SUPPORT_EMAIL else
+        "Contact us using the developer email on the Trace listing in the app "
+        "store you installed from, using the address you signed up with, and we "
+        "will delete the account for you."
+    )
+    return HTMLResponse(ACCOUNT_DELETION_PAGE.format(
+        contact=contact, privacy=PRIVACY_POLICY_URL))
