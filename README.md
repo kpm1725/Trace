@@ -10,8 +10,9 @@ and get a netlist, a parts list, and wiring steps.
 **Status: pre-alpha.** Every MVP feature is implemented — auth, both Claude
 calls, both result views, the circuit diagram, the credit ledger, the purchase
 flow, and the store-compliance surface — with 44 backend tests, 51 frontend
-tests, the diagram layout under its own checks, and lint and typecheck clean. What remains is store and account setup rather than
-code; see [What's not built yet](#whats-not-built-yet).
+tests, the diagram layout under its own checks, and lint and typecheck clean.
+What remains is store and account setup rather than code — see
+[SETUP.md](./SETUP.md) and [What's not built yet](#whats-not-built-yet).
 
 Nothing here has run on a device or against a live backend yet. It typechecks
 and its tests pass, which is not the same thing.
@@ -317,6 +318,17 @@ with no peer conflicts, and `expo-doctor` passes its version check.
 ---
 
 ## Getting started
+
+**Setting this up from scratch — Atlas, Railway, Google OAuth, EAS, an APK on
+your phone — is written up in [SETUP.md](./SETUP.md).** It covers the
+chicken-and-egg in the Google Android client (it needs a SHA-1 that doesn't
+exist until EAS makes your keystore), which is the step most likely to cost you
+an hour.
+
+You do **not** need any store setup for a working build: accounts start with 5
+free credits, and the paywall degrades to "purchases aren't available in this
+build" when RevenueCat is unconfigured.
+
 
 ```bash
 # Backend
