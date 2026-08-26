@@ -9,8 +9,8 @@ and get a netlist, a parts list, and wiring steps.
 
 **Status: pre-alpha.** Every MVP feature is implemented — auth, both Claude
 calls, both result views, the circuit diagram, the credit ledger, the purchase
-flow, and the store-compliance surface — with 44 backend tests and the diagram
-layout under its own checks. What remains is store and account setup rather than
+flow, and the store-compliance surface — with 44 backend tests, 51 frontend
+tests, the diagram layout under its own checks, and lint and typecheck clean. What remains is store and account setup rather than
 code; see [What's not built yet](#whats-not-built-yet).
 
 Nothing here has run on a device or against a live backend yet. It typechecks
@@ -330,8 +330,23 @@ cp .env.example .env          # fill in MONGO_URL, ANTHROPIC_API_KEY, GOOGLE_CLI
 cd frontend
 npm install
 cp .env.example .env          # fill in EXPO_PUBLIC_BACKEND_URL and the Google client IDs
+npm run typecheck
+npm run lint
+npm test                      # 51 tests
+npm run diagram:check         # circuit layout invariants
 npx expo start
 ```
+
+`jest-expo` is pinned to an exact `57.0.4`: `57.0.5` peer-requires
+`@react-native/jest-preset@^0.86.3`, while react-native 0.86.2 — the version
+Expo SDK 57 pins — requires exactly `0.86.2`. Bumping React Native to satisfy a
+test dependency is the tail wagging the dog.
+
+The public env vars are set in `jest.global-setup.js` rather than a test file,
+because `babel-preset-expo` inlines `process.env.EXPO_PUBLIC_*` at transform
+time. Setting them any later bakes in `""` — which silently made the paywall's
+"store unavailable" test pass on a missing API key rather than on the empty
+offerings it was meant to check.
 
 Builds are EAS cloud builds only — there is no local build pipeline:
 

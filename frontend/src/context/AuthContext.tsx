@@ -34,7 +34,8 @@ const Ctx = createContext<AuthCtx>({
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  /** Only the async token exchange needs stored state; see `error` below. */
+  const [exchangeError, setExchangeError] = useState<string | null>(null);
 
   const [, response, promptAsync] = Google.useAuthRequest({
     clientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
@@ -66,23 +67,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, []);
 
+  /**
+   * Whatever the last sign-in attempt went wrong with.
+   *
+   * The two synchronous failures are *derived* from `response` rather than
+   * copied into state. Setting state in an effect body just to mirror a value
+   * already available during render causes a cascading render for no gain — and
+   * leaves two sources of truth to keep in step. Only the token exchange, which
+   * is genuinely async, needs its own state.
+   */
+  const idToken = response?.type === "success" ? response.authentication?.idToken : undefined;
+  const responseError =
+    response?.type === "error"
+      ? "Google sign-in was cancelled or failed."
+      : response?.type === "success" && !idToken
+        // Failing silently here looks to the user like the button did nothing,
+        // and the cause is almost always a misconfigured OAuth client type.
+        ? "Google didn't return an ID token. Check the OAuth client type."
+        : null;
+  const error = exchangeError ?? responseError;
+
   // Exchange Google's id token for a Trace session token.
   useEffect(() => {
-    if (!response) return;
-
-    if (response.type === "error") {
-      setError("Google sign-in was cancelled or failed.");
-      return;
-    }
-    if (response.type !== "success") return;
-
-    const idToken = response.authentication?.idToken;
-    if (!idToken) {
-      // Failing silently here looks to the user like the button did nothing,
-      // and the cause is almost always a misconfigured OAuth client type.
-      setError("Google didn't return an ID token. Check the OAuth client type.");
-      return;
-    }
+    if (!idToken) return;
 
     (async () => {
       try {
@@ -93,16 +100,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
         await setToken(data.session_token);
         setUser(data.user);
-        setError(null);
-      } catch (e: any) {
+        setExchangeError(null);
+      } catch (e) {
         console.warn("Google sign-in exchange failed", e);
-        setError(e?.message ?? "Sign-in failed. Please try again.");
+        setExchangeError(e instanceof Error ? e.message : "Sign-in failed. Please try again.");
       }
     })();
-  }, [response]);
+  }, [idToken]);
 
   const signIn = useCallback(async () => {
-    setError(null);
+    setExchangeError(null);
     await promptAsync();
   }, [promptAsync]);
 
