@@ -14,14 +14,14 @@ shipped through **Railway (nixpacks)** and **EAS**.
 
 | | count | loaded |
 |---|---|---|
-| `agents/` | 25 | name + description always in context (~1.8k tokens) |
+| `agents/` | 30 | name + description always in context (~2.2k tokens) |
 | `skills/` | 51 | name + description always in context (~3.4k tokens) |
 | `commands/` | 43 | only when you invoke the slash command |
 
-Always-on cost is ~5.2k tokens. The earlier unfiltered import of all 149 upstream agents
+Always-on cost is ~5.6k tokens. The earlier unfiltered import of all 149 upstream agents
 cost ~10.3k on its own.
 
-## Agents (25)
+## Agents (30)
 
 **Mobile / frontend** — `mobile-developer`, `typescript-pro`, `frontend-developer`,
 `ui-ux-designer`, `design-system-architect`
@@ -41,6 +41,14 @@ cost ~10.3k on its own.
 
 **Shipping a consumer app** — `legal-advisor` (privacy policy / ToS for store review),
 `search-specialist` (dependency-compatibility research)
+
+**Operating loop** (from upstream's `operating-kit`, filled in for Trace) — `session-start`,
+`session-end`, `code-review-preshipment`, `deploy-with-verification`, `prod-logs-health-check`.
+These ship upstream as templates full of `{{TEST_COMMAND}}` / `{{STATE_DOC}}` placeholders; every
+placeholder here is replaced with Trace's real commands, endpoints, and failure markers — the
+Railway URL and `railway logs`, `pytest` with `mongomock-motor`, the `npm test` watch-mode trap,
+EAS profiles, and the actual log strings from `server.py` and `billing.py`. They read and write
+`docs/STATE.md` and `docs/MEMORY.md`, both seeded with current reality.
 
 Upstream namespaces agents by plugin because the same agent ships in several
 (`comprehensive-review-code-reviewer`). Only one variant of each is kept here, so all
@@ -70,12 +78,6 @@ databases / embeddings (Trace calls Claude directly with no retrieval), LLM fine
 and MLOps, blockchain, game development, quantitative trading, reverse engineering,
 Django / .NET / Rust / Go / Java / Elixir and other non-stack languages, monorepo tooling,
 Next.js and Tailwind, SEO, and the PPTX / social-publishing / HR toolkits.
-
-Also skipped: the `operating-kit` agents (`deploy-with-verification`,
-`prod-logs-health-check`, `session-start`, `session-end`, `code-review-preshipment`).
-They are useful but ship as templates full of `{{TEST_COMMAND}}` / `{{STATE_DOC}}`
-placeholders needing project-specific fill-in. Worth revisiting once deploy and health-check
-commands settle.
 
 Upstream hooks (`block-no-verify`, `protect-mcp`, `review-agent-governance`) execute code
 on tool calls and were not installed.
